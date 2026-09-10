@@ -80,6 +80,7 @@ export const onRequestGet = async (context: { request: Request }) => {
         lat,
         lon,
         locationLabel,
+        city,
         county: mapped?.county,
         state,
         stateCode,

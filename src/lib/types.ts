@@ -48,6 +48,7 @@ export interface ScannerLinks {
   lat: number;
   lon: number;
   locationLabel: string;
+  city?: string;
   county?: string;
   state?: string;
   stateCode?: string;
