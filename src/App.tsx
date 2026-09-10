@@ -6,6 +6,7 @@ import { ScannerPanel } from './components/ScannerPanel';
 import { SearchBar } from './components/SearchBar';
 import { useAircraft } from './hooks/useAircraft';
 import { useRadar } from './hooks/useRadar';
+import { useOpenMhz } from './hooks/useOpenMhz';
 import { useScanners } from './hooks/useScanners';
 import type { AppLocation } from './lib/types';
 
@@ -30,6 +31,7 @@ export default function App() {
     loading: scanLoading,
     error: scanError,
   } = useScanners(location?.lat ?? null, location?.lon ?? null);
+  const openmhz = useOpenMhz(location?.lat ?? null, location?.lon ?? null);
 
   const onSearch = useCallback(
     async (q: string) => {
@@ -85,12 +87,13 @@ export default function App() {
             <h1>STAND BY FOR GRID LOCK</h1>
             <p>
               Enter a US ZIP code or street address to open the local intel board — live ADS-B
-              aircraft, weather radar overlay, and scanner deep-links for the area.
+              aircraft, weather radar overlay, and OpenMHz in-app call audio plus external
+              scanner catalogs.
             </p>
             <ul>
               <li>ADS-B via adsb.lol / adsb.fi (civilian) — not military radar</li>
               <li>Weather radar tiles via RainViewer</li>
-              <li>Scanner links only — no audio embed/proxy</li>
+              <li>OpenMHz in-app call bursts + external Broadcastify / RadioReference links</li>
             </ul>
           </div>
         </main>
@@ -132,7 +135,12 @@ export default function App() {
               />
             </div>
             <div className={mobileTab === 'scan' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'}>
-              <ScannerPanel data={scanners} loading={scanLoading} error={scanError} />
+              <ScannerPanel
+                scanners={scanners}
+                scanLoading={scanLoading}
+                scanError={scanError}
+                openmhz={openmhz}
+              />
             </div>
           </aside>
         </main>

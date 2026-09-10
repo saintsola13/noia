@@ -5,6 +5,75 @@
 
 const UA = 'NoiaOps/1.0 (contact: saintsola13)';
 
+
+const STATE_NAME_TO_CODE = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', 'district of columbia': 'DC',
+  florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL',
+  indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA',
+  maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN',
+  mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT',
+  virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY',
+};
+
+function normalizeStateCode(input) {
+  if (!input) return undefined;
+  const trimmed = String(input).trim();
+  if (!trimmed) return undefined;
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  return STATE_NAME_TO_CODE[trimmed.toLowerCase()];
+}
+
+function stateMatches(systemState, targetCode) {
+  const code = normalizeStateCode(systemState);
+  return Boolean(code && code === targetCode);
+}
+
+let openMhzSystemsCache = null;
+const OPENMHZ_SYSTEMS_TTL_MS = 60 * 60 * 1000;
+
+async function getOpenMhzSystems() {
+  const now = Date.now();
+  if (openMhzSystemsCache && now - openMhzSystemsCache.fetchedAt < OPENMHZ_SYSTEMS_TTL_MS) {
+    return openMhzSystemsCache.systems;
+  }
+  const res = await fetch('https://api.openmhz.com/systems', {
+    headers: { 'User-Agent': UA, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`OpenMHz systems error (${res.status})`);
+  const data = await res.json();
+  const systems = Array.isArray(data.systems) ? data.systems : [];
+  openMhzSystemsCache = { fetchedAt: now, systems };
+  return systems;
+}
+
+function scoreOpenMhzSystem(sys, opts) {
+  const city = opts.city?.toLowerCase().trim();
+  const county = opts.county?.replace(/\s+County$/i, '').toLowerCase().trim();
+  const name = (sys.name || '').toLowerCase();
+  const desc = (sys.description || '').toLowerCase();
+  const sysCity = (sys.city || '').toLowerCase();
+  const sysCounty = (sys.county || '').toLowerCase();
+  const hay = `${name} ${desc} ${sysCity} ${sysCounty}`;
+  let score = 0;
+  if (city) {
+    if (sysCity && (sysCity.includes(city) || city.includes(sysCity))) score += 1000;
+    else if (hay.includes(city)) score += 800;
+  }
+  if (county) {
+    if (sysCounty.includes(county) || hay.includes(county)) score += 400;
+    if (hay.includes(`${county} county`)) score += 100;
+  }
+  if (sys.active) score += 50;
+  score += Math.min(40, Number(sys.callAvg) || 0);
+  return score;
+}
+
+
 function radiusToBbox(lat, lon, radiusKm) {
   const latDelta = radiusKm / 111;
   const lonDelta = radiusKm / (111 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
@@ -227,7 +296,108 @@ export function createDevApiMiddleware() {
           stateCode,
           links,
           disclaimer:
-            'NOIA does not embed, proxy, or stream scanner audio. Links open Broadcastify / RadioReference in a new tab. Availability and legality of listening vary by jurisdiction — follow local law and each site’s terms.',
+            'External catalog links only (Broadcastify / RadioReference) — NOIA does not embed or proxy those streams. In-app call bursts come from OpenMHz separately. Availability and legality of listening vary by jurisdiction — follow local law and each site’s terms.',
+        });
+      }
+
+
+      // --- OpenMHz systems (1h memory cache) ---
+      if (url.pathname === '/api/openmhz-systems') {
+        const lat = Number(url.searchParams.get('lat'));
+        const lon = Number(url.searchParams.get('lon'));
+        let stateParam = url.searchParams.get('state')?.trim() || undefined;
+        let cityParam = url.searchParams.get('city')?.trim() || undefined;
+        let county;
+        let locationLabel = '';
+
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          const rev = await nominatimReverse(lat, lon);
+          const mapped = rev ? mapNominatim(rev) : null;
+          cityParam = cityParam || mapped?.city;
+          county = mapped?.county;
+          stateParam = stateParam || mapped?.stateCode || mapped?.state;
+          const countyDisplay = county
+            ? /county$/i.test(county)
+              ? county
+              : `${county} County`
+            : undefined;
+          locationLabel =
+            [cityParam, countyDisplay, mapped?.state || mapped?.stateCode]
+              .filter(Boolean)
+              .join(', ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        } else if (stateParam || cityParam) {
+          locationLabel = [cityParam, stateParam].filter(Boolean).join(', ');
+        } else {
+          return sendJson(res, { error: 'Provide lat & lon, or state (& optional city)' }, 400);
+        }
+
+        const stateCode = normalizeStateCode(stateParam);
+        if (!stateCode) {
+          return sendJson(res, { error: 'Could not resolve a US state for this location' }, 404);
+        }
+
+        const all = await getOpenMhzSystems();
+        const inState = all.filter((s) => s.shortName && stateMatches(s.state, stateCode));
+        const scored = inState
+          .map((s) => ({
+            sys: s,
+            score: scoreOpenMhzSystem(s, { city: cityParam, county, stateCode }),
+          }))
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const aActive = a.sys.active ? 1 : 0;
+            const bActive = b.sys.active ? 1 : 0;
+            if (bActive !== aActive) return bActive - aActive;
+            return (Number(b.sys.callAvg) || 0) - (Number(a.sys.callAvg) || 0);
+          });
+
+        const top = scored.slice(0, 8).map(({ sys }) => ({
+          shortName: String(sys.shortName),
+          name: sys.name || String(sys.shortName),
+          city: sys.city || sys.county || undefined,
+          state: normalizeStateCode(sys.state) || sys.state || stateCode,
+          active: Boolean(sys.active),
+          callAvg: Number(sys.callAvg) || 0,
+          lastActive: sys.lastActive || undefined,
+        }));
+
+        if (!locationLabel) {
+          locationLabel = cityParam ? `${cityParam}, ${stateCode}` : stateCode;
+        }
+
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return sendJson(res, {
+          systems: top,
+          locationLabel,
+          attribution: 'Audio via OpenMHz',
+        });
+      }
+
+      if (url.pathname === '/api/openmhz-calls') {
+        const shortName = url.searchParams.get('shortName')?.trim() || '';
+        if (!shortName || !/^[a-z0-9_-]+$/i.test(shortName)) {
+          return sendJson(res, { error: 'shortName is required and must match /^[a-z0-9_-]+$/i' }, 400);
+        }
+        const cRes = await fetch(`https://api.openmhz.com/${encodeURIComponent(shortName)}/calls`, {
+          headers: { 'User-Agent': UA, Accept: 'application/json' },
+        });
+        if (!cRes.ok) return sendJson(res, { error: `OpenMHz calls error (${cRes.status})` }, 502);
+        const data = await cRes.json();
+        const calls = (Array.isArray(data.calls) ? data.calls : [])
+          .filter((c) => c && c.url)
+          .map((c) => ({
+            id: String(c._id || c.id || `${c.talkgroupNum}-${c.time}`),
+            talkgroupNum: Number(c.talkgroupNum) || 0,
+            url: String(c.url),
+            time: c.time || '',
+            len: typeof c.len === 'number' ? c.len : 0,
+            freq: typeof c.freq === 'number' ? c.freq : undefined,
+          }));
+        res.setHeader('Cache-Control', 'public, max-age=15');
+        return sendJson(res, {
+          shortName,
+          calls,
+          attribution: 'Audio via OpenMHz',
         });
       }
 

@@ -85,7 +85,7 @@ export const onRequestGet = async (context: { request: Request }) => {
         stateCode,
         links,
         disclaimer:
-          'NOIA does not embed, proxy, or stream scanner audio. Links open Broadcastify / RadioReference in a new tab. Availability and legality of listening vary by jurisdiction — follow local law and each site’s terms.',
+          'External catalog links only (Broadcastify / RadioReference) — NOIA does not embed or proxy those streams. In-app call bursts come from OpenMHz separately. Availability and legality of listening vary by jurisdiction — follow local law and each site’s terms.',
       },
       200,
       300,

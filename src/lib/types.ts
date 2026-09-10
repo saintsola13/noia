@@ -65,3 +65,35 @@ export interface AppLocation {
   label: string;
   radiusKm: number;
 }
+
+export interface OpenMhzSystem {
+  shortName: string;
+  name: string;
+  city?: string;
+  state: string;
+  active: boolean;
+  callAvg: number;
+  lastActive?: string;
+}
+
+export interface OpenMhzCall {
+  id: string;
+  talkgroupNum: number;
+  url: string;
+  time: string;
+  len: number;
+  freq?: number;
+}
+
+export interface OpenMhzSystemsResponse {
+  systems: OpenMhzSystem[];
+  locationLabel: string;
+  attribution: string;
+}
+
+export interface OpenMhzCallsResponse {
+  shortName: string;
+  calls: OpenMhzCall[];
+  attribution: string;
+}
+

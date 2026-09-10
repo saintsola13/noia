@@ -1,4 +1,11 @@
-import type { Aircraft, GeoResult, RadarMeta, ScannerLinks } from '../lib/types';
+import type {
+  Aircraft,
+  GeoResult,
+  OpenMhzCallsResponse,
+  OpenMhzSystemsResponse,
+  RadarMeta,
+  ScannerLinks,
+} from '../lib/types';
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -34,3 +41,17 @@ export function fetchScanners(lat: number, lon: number): Promise<ScannerLinks> {
   const params = new URLSearchParams({ lat: String(lat), lon: String(lon) });
   return getJson(`/api/scanners?${params}`);
 }
+
+export function fetchOpenMhzSystems(
+  lat: number,
+  lon: number,
+): Promise<OpenMhzSystemsResponse> {
+  const params = new URLSearchParams({ lat: String(lat), lon: String(lon) });
+  return getJson(`/api/openmhz-systems?${params}`);
+}
+
+export function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCallsResponse> {
+  const params = new URLSearchParams({ shortName });
+  return getJson(`/api/openmhz-calls?${params}`);
+}
+
