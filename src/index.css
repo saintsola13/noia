@@ -1290,3 +1290,269 @@ li.empty {
   border-radius: 8px;
 }
 
+
+/* --- NWS weather alerts --- */
+.wx-alert-banner {
+  position: absolute;
+  top: 3.1rem;
+  left: 0.65rem;
+  right: 0.65rem;
+  z-index: 510;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--wx-sev, var(--danger)) 70%, #fff 10%);
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--wx-sev, var(--danger)) 28%, #0a1014),
+    rgba(8, 12, 16, 0.92)
+  );
+  color: var(--text);
+  font: inherit;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 0 22px color-mix(in srgb, var(--wx-sev, var(--danger)) 35%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.wx-alert-pulse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--wx-sev, var(--danger)) 22%, transparent),
+    transparent
+  );
+  animation: wx-banner-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes wx-banner-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(-8%);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(8%);
+  }
+}
+
+.wx-alert-badge {
+  position: relative;
+  z-index: 1;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--wx-sev, var(--danger)) 80%, #fff);
+  color: #061018;
+  background: var(--wx-sev, var(--danger));
+  font-weight: 700;
+}
+
+.wx-alert-event {
+  position: relative;
+  z-index: 1;
+  color: var(--wx-sev, var(--amber));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.wx-alert-head {
+  position: relative;
+  z-index: 1;
+  color: var(--text);
+  opacity: 0.92;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wx-alert-cta {
+  position: relative;
+  z-index: 1;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+}
+
+.hud-chip.alert-sev {
+  color: #ff8f70;
+  border-color: rgba(255, 90, 42, 0.55);
+  box-shadow: 0 0 12px rgba(255, 90, 42, 0.25);
+}
+
+.wx-alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 36vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.wx-alert-list > li {
+  border: 1px solid color-mix(in srgb, var(--wx-sev, var(--border)) 45%, transparent);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.wx-alert-list > li.active {
+  border-color: var(--wx-sev, var(--amber));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wx-sev, var(--amber)) 35%, transparent);
+}
+
+.wx-alert-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.66rem;
+  padding: 0.45rem 0.5rem;
+  cursor: pointer;
+}
+
+.wx-alert-item:hover {
+  background: rgba(92, 225, 255, 0.05);
+}
+
+.wx-alert-item-top {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sev-pill {
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-weight: 700;
+}
+
+.sev-pill.sev-extreme {
+  color: #ff2d2d;
+  background: rgba(255, 45, 45, 0.12);
+}
+.sev-pill.sev-severe {
+  color: #ff5a2a;
+  background: rgba(255, 90, 42, 0.12);
+}
+.sev-pill.sev-moderate {
+  color: var(--amber);
+  background: rgba(255, 200, 87, 0.1);
+}
+.sev-pill.sev-minor {
+  color: var(--cyan);
+  background: rgba(92, 225, 255, 0.1);
+}
+.sev-pill.sev-unknown {
+  color: var(--muted);
+  background: rgba(122, 146, 163, 0.1);
+}
+
+.wx-alert-item-event {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.wx-alert-item-head {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.wx-alert-item-area {
+  color: var(--olive);
+  font-size: 0.6rem;
+}
+
+.wx-alert-item-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.wx-alert-expand {
+  border-top: 1px solid rgba(92, 225, 255, 0.12);
+  padding: 0.45rem 0.5rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wx-alert-desc,
+.wx-alert-instr {
+  margin: 0;
+  font-size: 0.62rem;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wx-alert-instr {
+  color: var(--amber);
+}
+
+.wx-popup {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #111;
+  max-width: 260px;
+}
+
+.wx-popup-sev {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0.15rem 0 0.25rem;
+}
+
+.wx-popup-head {
+  font-size: 11px;
+  margin-bottom: 0.25rem;
+}
+
+.wx-popup-area {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+@media (max-width: 860px) {
+  .wx-alert-banner {
+    top: auto;
+    bottom: 3.4rem;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .wx-alert-event {
+    display: none;
+  }
+}

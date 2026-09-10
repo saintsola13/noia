@@ -1,11 +1,14 @@
 import { useCallback, useState } from 'react';
 import { geocode } from './api/client';
 import { AircraftPanel } from './components/AircraftPanel';
+import { AlertBanner } from './components/AlertBanner';
+import { AlertsPanel } from './components/AlertsPanel';
 import { CadPanel } from './components/CadPanel';
 import { MapView } from './components/MapView';
 import { ScannerPanel } from './components/ScannerPanel';
 import { SearchBar } from './components/SearchBar';
 import { useAircraft } from './hooks/useAircraft';
+import { useAlerts } from './hooks/useAlerts';
 import { useCad } from './hooks/useCad';
 import { useRadar } from './hooks/useRadar';
 import { useOpenMhz } from './hooks/useOpenMhz';
@@ -20,7 +23,9 @@ export default function App() {
   const [geocoding, setGeocoding] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [showRadar, setShowRadar] = useState(true);
+  const [showAlerts, setShowAlerts] = useState(true);
   const [showCad, setShowCad] = useState(true);
+  const [focusAlertId, setFocusAlertId] = useState<string | null>(null);
   const [focusCad, setFocusCad] = useState<{ lat: number; lon: number; id: string } | null>(
     null,
   );
@@ -32,6 +37,11 @@ export default function App() {
     location?.radiusKm ?? radiusKm,
   );
   const { meta: radarMeta } = useRadar(Boolean(location) && showRadar);
+  const wxAlerts = useAlerts(
+    location?.lat ?? null,
+    location?.lon ?? null,
+    Boolean(location) && showAlerts,
+  );
   const {
     data: scanners,
     loading: scanLoading,
@@ -118,6 +128,7 @@ export default function App() {
               <li>Aircraft via ADS-B (civilian) — not military radar</li>
               <li>CAD: CA CHP + FL FL511 traffic incidents — not city 911</li>
               <li>Weather radar tiles via RainViewer</li>
+              <li>NWS active weather alerts for your point</li>
               <li>OpenMHz call audio + external scanner catalogs</li>
             </ul>
           </div>
@@ -137,9 +148,22 @@ export default function App() {
               focusCad={focusCad}
               radarMeta={radarMeta}
               showRadar={showRadar}
+              alerts={wxAlerts.alerts}
+              showAlerts={showAlerts}
               mapLayoutKey={mapLayoutKey}
               dimAircraft={cadFocused}
             />
+            {showAlerts && wxAlerts.count > 0 && (
+              <AlertBanner
+                alerts={wxAlerts.alerts}
+                onOpen={() => {
+                  setFocusAlertId(wxAlerts.alerts[0]?.id ?? null);
+                  const el = document.getElementById('wx-alerts-panel');
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  setMobileTab((tab) => (tab === 'scan' ? 'map' : tab));
+                }}
+              />
+            )}
             <div className="map-hud">
               <div className="hud-chip">{location.label}</div>
               <div className="hud-chip amber">
@@ -150,12 +174,24 @@ export default function App() {
                   CAD · {cad.loading ? '…' : cad.count} incidents
                 </div>
               )}
+              {showAlerts && wxAlerts.count > 0 && (
+                <div className="hud-chip alert-sev">
+                  WX · {wxAlerts.count} alert{wxAlerts.count === 1 ? '' : 's'}
+                </div>
+              )}
               <button
                 type="button"
                 className={`hud-pill ${showRadar ? 'active' : ''}`}
                 onClick={() => setShowRadar((v) => !v)}
               >
-                Weather
+                WX RADAR
+              </button>
+              <button
+                type="button"
+                className={`hud-pill ${showAlerts ? 'active' : ''}`}
+                onClick={() => setShowAlerts((v) => !v)}
+              >
+                WX ALERTS{showAlerts && wxAlerts.count > 0 ? ` · ${wxAlerts.count}` : ''}
               </button>
               <button
                 type="button"
@@ -215,6 +251,26 @@ export default function App() {
                 source={cad.source}
               />
             </div>
+            {showAlerts && (
+              <div
+                className={
+                  mobileTab === 'map' || mobileTab === 'cad'
+                    ? 'side-block'
+                    : 'side-block hide-mobile'
+                }
+              >
+                <AlertsPanel
+                  alerts={wxAlerts.alerts}
+                  count={wxAlerts.count}
+                  loading={wxAlerts.loading}
+                  error={wxAlerts.error}
+                  updatedAt={wxAlerts.updatedAt}
+                  source={wxAlerts.source}
+                  onRefresh={wxAlerts.refresh}
+                  highlightId={focusAlertId}
+                />
+              </div>
+            )}
             <div
               className={
                 mobileTab === 'scan' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'
@@ -270,7 +326,7 @@ export default function App() {
       <footer className="status-bar">
         <span>NOIA · local intel</span>
         <span>CAD = public traffic feeds, not 911</span>
-        <span>Live poll ~10s · CAD ~50s</span>
+        <span>Live poll ~10s · CAD ~50s · WX alerts ~2.5m</span>
       </footer>
     </div>
   );

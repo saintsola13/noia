@@ -6,6 +6,7 @@ import type {
   OpenMhzSystemsResponse,
   RadarMeta,
   ScannerLinks,
+  AlertsResponse,
 } from '../lib/types';
 
 async function getJson<T>(url: string): Promise<T> {
@@ -120,4 +121,9 @@ export function fetchCad(
     radiusKm: String(radiusKm),
   });
   return getJson(`/api/cad?${params}`);
+}
+
+export function fetchAlerts(lat: number, lon: number): Promise<AlertsResponse> {
+  const params = new URLSearchParams({ lat: String(lat), lon: String(lon) });
+  return getJson(`/api/alerts?${params}`);
 }

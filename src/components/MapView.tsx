@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { Circle, MapContainer, TileLayer, useMap } from 'react-leaflet';
-import type { Aircraft, CadIncident, RadarMeta } from '../lib/types';
+import type { Aircraft, CadIncident, RadarMeta, WeatherAlert } from '../lib/types';
 import { AircraftMarkers } from './AircraftMarkers';
 import { CadMarkers } from './CadMarkers';
 import { RadarLayer } from './RadarLayer';
+import { AlertPolygons } from './AlertPolygons';
 import 'leaflet/dist/leaflet.css';
 
 function Recenter({ lat, lon }: { lat: number; lon: number }) {
@@ -79,6 +80,8 @@ interface Props {
   focusCad?: { lat: number; lon: number; id: string } | null;
   radarMeta: RadarMeta | null;
   showRadar: boolean;
+  alerts?: WeatherAlert[];
+  showAlerts?: boolean;
   mapLayoutKey?: string | number;
   dimAircraft?: boolean;
 }
@@ -95,6 +98,8 @@ export function MapView({
   focusCad,
   radarMeta,
   showRadar,
+  alerts = [],
+  showAlerts = true,
   mapLayoutKey = 'map',
   dimAircraft = false,
 }: Props) {
@@ -112,6 +117,7 @@ export function MapView({
         maxZoom={16}
       />
       {showRadar && <RadarLayer meta={radarMeta} />}
+      {showAlerts && alerts.length > 0 && <AlertPolygons alerts={alerts} />}
       <Circle
         center={[lat, lon]}
         radius={radiusKm * 1000}

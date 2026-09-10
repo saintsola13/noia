@@ -118,3 +118,33 @@ export interface CadResponse {
   count: number;
   incidents: CadIncident[];
 }
+
+export type AlertSeverity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+
+export interface AlertGeometry {
+  type: string;
+  coordinates: unknown;
+}
+
+export interface WeatherAlert {
+  id: string;
+  event: string;
+  severity: AlertSeverity;
+  urgency: string;
+  certainty: string;
+  headline: string;
+  description: string;
+  instruction: string;
+  areaDesc: string;
+  onset: string | null;
+  ends: string | null;
+  sent: string | null;
+  color: string;
+  geometry: AlertGeometry | null;
+}
+
+export interface AlertsResponse {
+  source: string;
+  count: number;
+  alerts: WeatherAlert[];
+}

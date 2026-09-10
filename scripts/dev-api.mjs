@@ -518,6 +518,81 @@ export function createDevApiMiddleware() {
         });
       }
 
+
+      if (url.pathname === '/api/alerts') {
+        const lat = Number(url.searchParams.get('lat'));
+        const lon = Number(url.searchParams.get('lon'));
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          return sendJson(res, { error: 'lat and lon are required numbers' }, 400);
+        }
+        if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+          return sendJson(res, { error: 'lat/lon out of range' }, 400);
+        }
+        const now = Date.now();
+        const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+        if (!globalThis.__noiaAlertsCache) globalThis.__noiaAlertsCache = null;
+        const cached = globalThis.__noiaAlertsCache;
+        if (cached && cached.key === key && now - cached.fetchedAt < 75_000) {
+          res.setHeader('Cache-Control', 'public, max-age=60');
+          return sendJson(res, cached.payload);
+        }
+        const nwsUrl = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;
+        const aRes = await fetch(nwsUrl, {
+          headers: {
+            'User-Agent': 'NoiaOps/1.0 (github.com/saintsola13/noia; contact via GitHub)',
+            Accept: 'application/geo+json',
+          },
+        });
+        if (!aRes.ok) return sendJson(res, { error: `NWS alerts error (${aRes.status})` }, 502);
+        const data = await aRes.json();
+        const severityRank = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4 };
+        const severityColor = (severity) => {
+          switch (severity) {
+            case 'Extreme': return '#ff2d2d';
+            case 'Severe': return '#ff5a2a';
+            case 'Moderate': return '#ffc857';
+            case 'Minor': return '#5ce1ff';
+            default: return '#7a92a3';
+          }
+        };
+        const normalizeSeverity = (raw) => {
+          const s = String(raw || '');
+          if (s === 'Extreme' || s === 'Severe' || s === 'Moderate' || s === 'Minor') return s;
+          return 'Unknown';
+        };
+        const alerts = (Array.isArray(data.features) ? data.features : []).map((f) => {
+          const p = f.properties || {};
+          const severity = normalizeSeverity(p.severity);
+          const id = String(p.id || f.id || '') || `${p.event || 'alert'}-${p.sent || p.onset || Math.random()}`;
+          return {
+            id,
+            event: String(p.event || 'Weather Alert'),
+            severity,
+            urgency: String(p.urgency || 'Unknown'),
+            certainty: String(p.certainty || 'Unknown'),
+            headline: String(p.headline || p.event || 'Active weather alert'),
+            description: String(p.description || ''),
+            instruction: String(p.instruction || ''),
+            areaDesc: String(p.areaDesc || ''),
+            onset: p.onset != null ? String(p.onset) : null,
+            ends: p.ends != null ? String(p.ends) : null,
+            sent: p.sent != null ? String(p.sent) : null,
+            color: severityColor(severity),
+            geometry: f.geometry ?? null,
+          };
+        });
+        alerts.sort((a, b) => {
+          const ra = severityRank[a.severity] ?? 9;
+          const rb = severityRank[b.severity] ?? 9;
+          if (ra !== rb) return ra - rb;
+          return String(b.onset || b.sent || '').localeCompare(String(a.onset || a.sent || ''));
+        });
+        const payload = { source: 'National Weather Service', count: alerts.length, alerts };
+        globalThis.__noiaAlertsCache = { key, fetchedAt: now, payload };
+        res.setHeader('Cache-Control', 'public, max-age=60');
+        return sendJson(res, payload);
+      }
+
       if (url.pathname === '/api/radar') {
         const rRes = await fetch('https://api.rainviewer.com/public/weather-maps.json', {
           headers: { Accept: 'application/json' },
