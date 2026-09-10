@@ -14,6 +14,39 @@ function Recenter({ lat, lon }: { lat: number; lon: number }) {
   return null;
 }
 
+/** Leaflet maps break when mounted inside display:none; invalidate when wrap becomes visible. */
+function MapInvalidator({ layoutKey }: { layoutKey: string | number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const run = () => {
+      map.invalidateSize({ animate: false });
+    };
+    run();
+    const t1 = window.setTimeout(run, 50);
+    const t2 = window.setTimeout(run, 250);
+    const t3 = window.setTimeout(run, 500);
+
+    const container = map.getContainer();
+    const wrap = container.parentElement;
+    let ro: ResizeObserver | null = null;
+    if (wrap && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => run());
+      ro.observe(wrap);
+      ro.observe(container);
+    }
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      ro?.disconnect();
+    };
+  }, [layoutKey, map]);
+
+  return null;
+}
+
 function FocusCad({
   focus,
 }: {
@@ -22,7 +55,14 @@ function FocusCad({
   const map = useMap();
   useEffect(() => {
     if (!focus) return;
-    map.flyTo([focus.lat, focus.lon], Math.max(map.getZoom(), 12), { animate: true, duration: 0.6 });
+    map.flyTo([focus.lat, focus.lon], Math.max(map.getZoom(), 12), {
+      animate: true,
+      duration: 0.6,
+    });
+    const t = window.setTimeout(() => {
+      map.invalidateSize({ animate: false });
+    }, 100);
+    return () => window.clearTimeout(t);
   }, [focus, map]);
   return null;
 }
@@ -39,6 +79,8 @@ interface Props {
   focusCad?: { lat: number; lon: number; id: string } | null;
   radarMeta: RadarMeta | null;
   showRadar: boolean;
+  mapLayoutKey?: string | number;
+  dimAircraft?: boolean;
 }
 
 export function MapView({
@@ -53,6 +95,8 @@ export function MapView({
   focusCad,
   radarMeta,
   showRadar,
+  mapLayoutKey = 'map',
+  dimAircraft = false,
 }: Props) {
   return (
     <MapContainer
@@ -71,19 +115,20 @@ export function MapView({
         center={[lat, lon]}
         radius={radiusKm * 1000}
         pathOptions={{
-          color: '#6b8f3c',
+          color: '#3db8c9',
           weight: 1,
           dashArray: '6 8',
-          fillColor: '#6b8f3c',
-          fillOpacity: 0.06,
+          fillColor: '#3db8c9',
+          fillOpacity: 0.05,
         }}
       />
-      <AircraftMarkers aircraft={aircraft} />
+      <AircraftMarkers aircraft={aircraft} dim={dimAircraft} />
       {showCad && (
         <CadMarkers incidents={cadIncidents} focusId={focusCadId} source={cadSource} />
       )}
       <Recenter lat={lat} lon={lon} />
       <FocusCad focus={focusCad ?? null} />
+      <MapInvalidator layoutKey={mapLayoutKey} />
     </MapContainer>
   );
 }

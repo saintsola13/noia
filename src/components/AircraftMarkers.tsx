@@ -15,9 +15,10 @@ function planeIcon(heading: number | null) {
 
 interface Props {
   aircraft: Aircraft[];
+  dim?: boolean;
 }
 
-export function AircraftMarkers({ aircraft }: Props) {
+export function AircraftMarkers({ aircraft, dim = false }: Props) {
   return (
     <>
       {aircraft.map((ac) => (
@@ -25,6 +26,8 @@ export function AircraftMarkers({ aircraft }: Props) {
           key={ac.icao24}
           position={[ac.lat, ac.lon]}
           icon={planeIcon(ac.heading)}
+          opacity={dim ? 0.28 : 1}
+          zIndexOffset={dim ? 100 : 200}
         >
           <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
             <span className="ac-tip">

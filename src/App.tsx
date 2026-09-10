@@ -12,7 +12,7 @@ import { useOpenMhz } from './hooks/useOpenMhz';
 import { useScanners } from './hooks/useScanners';
 import type { AppLocation, CadIncident } from './lib/types';
 
-const DEFAULT_RADIUS = 40;
+const DEFAULT_RADIUS = 60;
 
 export default function App() {
   const [location, setLocation] = useState<AppLocation | null>(null);
@@ -79,15 +79,20 @@ export default function App() {
     setMobileTab((tab) => (tab === 'cad' ? 'cad' : 'map'));
   };
 
+  const mapVisible = mobileTab === 'map' || mobileTab === 'cad';
+  const mapLayoutKey = `${mobileTab}-${showCad ? 'cad' : 'nocad'}-${mapVisible ? 'vis' : 'hid'}`;
+  const cadFocused = mobileTab === 'cad';
+
   return (
     <div className="app">
       <div className="scanlines" aria-hidden />
+      <div className="grid-glow" aria-hidden />
       <header className="top-bar">
         <div className="brand">
           <span className="brand-mark">◈</span>
           <div>
-            <div className="brand-title">NOIA // LOCAL INTEL</div>
-            <div className="brand-sub">TACTICAL OPS BOARD · ADS-B · CAD · WX · COMMS</div>
+            <div className="brand-title">NOIA</div>
+            <div className="brand-sub">Local intel · ADS-B · CAD · Weather · Comms</div>
           </div>
         </div>
         <SearchBar
@@ -103,23 +108,23 @@ export default function App() {
       {!location ? (
         <main className="boot-screen">
           <div className="boot-card">
-            <h1>STAND BY FOR GRID LOCK</h1>
+            <p className="boot-kicker">Ready when you are</p>
+            <h1>Enter your ZIP to start</h1>
             <p>
-              Enter a US ZIP code or street address to open the local intel board — live ADS-B
-              aircraft, public CAD pins (CA CHP + FL FL511), weather radar, and OpenMHz call audio
-              plus external scanner catalogs.
+              Drop a US ZIP or street address to open the local intel board — live aircraft,
+              public CAD pins, weather radar, and scanner audio.
             </p>
             <ul>
-              <li>ADS-B via adsb.lol / adsb.fi (civilian) — not military radar</li>
-              <li>CAD: CA CHP (sa.xml) + FL FL511/FDOT traffic incidents — not city 911 CAD</li>
+              <li>Aircraft via ADS-B (civilian) — not military radar</li>
+              <li>CAD: CA CHP + FL FL511 traffic incidents — not city 911</li>
               <li>Weather radar tiles via RainViewer</li>
-              <li>OpenMHz in-app call bursts + external Broadcastify / RadioReference links</li>
+              <li>OpenMHz call audio + external scanner catalogs</li>
             </ul>
           </div>
         </main>
       ) : (
         <main className={`ops ${mobileTab === 'cad' ? 'cad-map-first' : ''}`}>
-          <div className={`ops-map-wrap ${mobileTab === 'map' || mobileTab === 'cad' ? 'active' : ''}`}>
+          <div className={`ops-map-wrap ${mapVisible ? 'active' : ''}`}>
             <MapView
               lat={location.lat}
               lon={location.lon}
@@ -132,29 +137,48 @@ export default function App() {
               focusCad={focusCad}
               radarMeta={radarMeta}
               showRadar={showRadar}
+              mapLayoutKey={mapLayoutKey}
+              dimAircraft={cadFocused}
             />
             <div className="map-hud">
               <div className="hud-chip">{location.label}</div>
               <div className="hud-chip amber">
-                GRID {location.lat.toFixed(4)}, {location.lon.toFixed(4)} · {location.radiusKm} km
+                {location.lat.toFixed(4)}, {location.lon.toFixed(4)} · {location.radiusKm} km
               </div>
-              <label className="hud-toggle">
-                <input
-                  type="checkbox"
-                  checked={showRadar}
-                  onChange={(e) => setShowRadar(e.target.checked)}
-                />
-                WX RADAR
-              </label>
-              <label className="hud-toggle">
-                <input
-                  type="checkbox"
-                  checked={showCad}
-                  onChange={(e) => setShowCad(e.target.checked)}
-                />
-                CAD
-              </label>
+              {showCad && (
+                <div className="hud-chip cyan">
+                  CAD · {cad.loading ? '…' : cad.count} incidents
+                </div>
+              )}
+              <button
+                type="button"
+                className={`hud-pill ${showRadar ? 'active' : ''}`}
+                onClick={() => setShowRadar((v) => !v)}
+              >
+                Weather
+              </button>
+              <button
+                type="button"
+                className={`hud-pill ${showCad ? 'active' : ''}`}
+                onClick={() => setShowCad((v) => !v)}
+              >
+                CAD · Incidents
+              </button>
             </div>
+            {showCad && (
+              <div className="cad-legend" aria-hidden>
+                <div className="cad-legend-title">CAD</div>
+                <div className="cad-legend-row">
+                  <span className="cad-legend-dot crash" /> Crash
+                </div>
+                <div className="cad-legend-row">
+                  <span className="cad-legend-dot construction" /> Construction
+                </div>
+                <div className="cad-legend-row">
+                  <span className="cad-legend-dot other" /> Other
+                </div>
+              </div>
+            )}
           </div>
 
           <aside className={`ops-side ${mobileTab !== 'map' ? 'active' : ''}`}>
@@ -188,6 +212,7 @@ export default function App() {
                 onFocus={onFocusCad}
                 focusId={focusCad?.id}
                 onRefresh={cad.refresh}
+                source={cad.source}
               />
             </div>
             <div
@@ -213,14 +238,14 @@ export default function App() {
             className={mobileTab === 'map' ? 'active' : ''}
             onClick={() => setMobileTab('map')}
           >
-            MAP
+            Map
           </button>
           <button
             type="button"
             className={mobileTab === 'adsb' ? 'active' : ''}
             onClick={() => setMobileTab('adsb')}
           >
-            ADS-B
+            Aircraft
           </button>
           <button
             type="button"
@@ -237,16 +262,15 @@ export default function App() {
             className={mobileTab === 'scan' ? 'active' : ''}
             onClick={() => setMobileTab('scan')}
           >
-            SCAN
+            Scan
           </button>
         </nav>
       )}
 
       <footer className="status-bar">
-        <span>NOIA OPS</span>
-        <span>CAD = CA CHP + FL FL511 ≠ CITY 911</span>
-        <span>ADS-B ≠ MIL RADAR</span>
-        <span>POLL ~10s / CAD ~50s</span>
+        <span>NOIA · local intel</span>
+        <span>CAD = public traffic feeds, not 911</span>
+        <span>Live poll ~10s · CAD ~50s</span>
       </footer>
     </div>
   );

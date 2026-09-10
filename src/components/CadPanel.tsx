@@ -13,12 +13,24 @@ interface Props {
   onFocus?: (incident: CadIncident) => void;
   focusId?: string | null;
   onRefresh?: () => void;
+  source?: string | null;
 }
 
 function snippet(text: string, max = 72): string {
   const t = text.trim().replace(/\s+/g, ' ');
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+function typeTone(type: string): 'crash' | 'construction' | 'other' {
+  const t = type || '';
+  if (/fire|collision|crash|1183|1179|injury|shoot|stab|rescue|accident|hazmat/i.test(t)) {
+    return 'crash';
+  }
+  if (/construction|closure|roadwork|lane\s*closed|maintenance|detour/i.test(t)) {
+    return 'construction';
+  }
+  return 'other';
 }
 
 export function CadPanel({
@@ -33,6 +45,7 @@ export function CadPanel({
   onFocus,
   focusId,
   onRefresh,
+  source,
 }: Props) {
   const sorted = [...incidents].sort((a, b) => {
     const da = haversineKm(originLat, originLon, a.lat, a.lon);
@@ -43,32 +56,39 @@ export function CadPanel({
   return (
     <section className="panel cad-panel">
       <header className="panel-head">
-        <h2>CAD // ACTIVE</h2>
+        <div className="panel-title-block">
+          <h2>
+            CAD <span className="panel-title-plain">Incidents</span>
+          </h2>
+          <div className="panel-chips">
+            <span className="count-badge">{loading ? '…' : count}</span>
+            {source ? <span className="source-chip">{source}</span> : null}
+          </div>
+        </div>
         <div className="panel-head-actions">
           <span className="panel-meta">
-            {loading ? 'SYNC…' : `${count} incidents`}
-            {updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString()}` : ''}
+            {updatedAt ? new Date(updatedAt).toLocaleTimeString() : '—'}
           </span>
           {onRefresh ? (
             <button
               type="button"
-              className="panel-refresh"
+              className="panel-refresh prominent"
               onClick={() => onRefresh()}
               disabled={loading}
             >
-              {loading ? 'SYNC' : 'REFRESH'}
+              {loading ? 'Syncing…' : 'Refresh'}
             </button>
           ) : null}
         </div>
       </header>
       <p className="panel-notice">
-        {notice ||
-          'CAD: CA (CHP) + FL (FL511/FDOT) public traffic incidents — not city 911 CAD.'}
+        {notice || 'Public traffic CAD (CA CHP + FL FL511) — not city 911.'}
       </p>
       {error && <p className="panel-error">{error}</p>}
       <ul className="cad-list">
         {sorted.slice(0, 50).map((inc) => {
           const dist = haversineKm(originLat, originLon, inc.lat, inc.lon);
+          const tone = typeTone(inc.type);
           return (
             <li key={inc.id} className={focusId === inc.id ? 'active' : ''}>
               <button
@@ -76,7 +96,12 @@ export function CadPanel({
                 className="cad-item"
                 onClick={() => onFocus?.(inc)}
               >
-                <div className="cad-item-type">{inc.type || 'Incident'}</div>
+                <div className="cad-item-top">
+                  <span className={`type-pill ${tone}`}>{inc.type || 'Incident'}</span>
+                  <span className="cad-item-dist">
+                    {dist < 10 ? dist.toFixed(1) : Math.round(dist)} km
+                  </span>
+                </div>
                 <div className="cad-item-loc">
                   {inc.location || '—'}
                   {inc.area ? ` · ${inc.area}` : ''}
@@ -85,7 +110,6 @@ export function CadPanel({
                   <div className="cad-item-desc">{snippet(inc.locationDesc)}</div>
                 ) : null}
                 <div className="cad-item-meta">
-                  <span>{dist < 10 ? dist.toFixed(1) : Math.round(dist)} km</span>
                   <span>{inc.logTime || '—'}</span>
                 </div>
               </button>
@@ -94,8 +118,11 @@ export function CadPanel({
         })}
         {!sorted.length && !loading && (
           <li className="empty cad-empty">
-            No public CAD incidents in range. Coverage is California (CHP sa.xml) and Florida
-            (FL511 / FDOT traffic incidents) — city PD domestic 911 CAD is not in these feeds.
+            <strong>No incidents in this radius</strong>
+            <span>Try a larger range or hit Refresh.</span>
+            <span className="cad-empty-note">
+              Covers CA CHP + FL FL511 public feeds — not city 911 CAD.
+            </span>
           </li>
         )}
       </ul>

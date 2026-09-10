@@ -26,14 +26,14 @@ export function SearchBar({ onSearch, loading, radiusKm, onRadiusChange }: Props
         className="search-input"
         type="text"
         inputMode="search"
-        placeholder="US ZIP or address…"
+        placeholder="ZIP or address"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         autoComplete="postal-code"
         spellCheck={false}
       />
       <label className="radius-label">
-        <span>RNG</span>
+        <span>Range</span>
         <select
           value={radiusKm}
           onChange={(e) => onRadiusChange(Number(e.target.value))}
@@ -41,12 +41,13 @@ export function SearchBar({ onSearch, loading, radiusKm, onRadiusChange }: Props
         >
           <option value={20}>20 km</option>
           <option value={40}>40 km</option>
+          <option value={60}>60 km</option>
           <option value={80}>80 km</option>
           <option value={120}>120 km</option>
         </select>
       </label>
       <button className="search-btn" type="submit" disabled={loading || !q.trim()}>
-        {loading ? 'LOC…' : 'LOCK'}
+        {loading ? 'Locating…' : 'Go'}
       </button>
     </form>
   );

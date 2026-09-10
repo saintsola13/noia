@@ -17,7 +17,7 @@ export function AircraftPanel({ aircraft, count, loading, error, updatedAt }: Pr
   return (
     <section className="panel aircraft-panel">
       <header className="panel-head">
-        <h2>ADS-B TRACK</h2>
+        <h2>Aircraft <span className="panel-title-plain">ADS-B</span></h2>
         <span className="panel-meta">
           {loading ? 'SYNC…' : `${count} contacts`}
           {updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString()}` : ''}

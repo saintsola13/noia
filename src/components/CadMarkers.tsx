@@ -6,21 +6,21 @@ import type { CadIncident } from '../lib/types';
 function cadColor(type: string): string {
   const t = type || '';
   if (/fire|collision|crash|1183|1179|injury|shoot|stab|rescue|accident|hazmat/i.test(t)) {
-    return '#c44';
+    return '#ff5a5a';
   }
   if (/construction|closure|roadwork|lane\s*closed|maintenance|detour/i.test(t)) {
-    return '#c9a227';
+    return '#ffc857';
   }
   if (/disabled|other|stall|vehicle/i.test(t)) {
-    return '#3db8c9';
+    return '#5ce1ff';
   }
-  return '#c9a227';
+  return '#ffc857';
 }
 
 function sirenHtml(color: string): string {
   return `<div class="cad-siren" style="--cad-color:${color}">
     <svg class="cad-siren-svg" viewBox="0 0 32 32" aria-hidden="true">
-      <ellipse class="cad-siren-glow" cx="16" cy="18" rx="11" ry="8"/>
+      <ellipse class="cad-siren-glow" cx="16" cy="18" rx="12" ry="9"/>
       <path class="cad-siren-dome" d="M8 18 C8 10 12 6 16 6 C20 6 24 10 24 18 Z"/>
       <rect class="cad-siren-base" x="7" y="17" width="18" height="6" rx="1.5"/>
       <rect class="cad-siren-foot" x="9" y="22.5" width="14" height="2.5" rx="1"/>
@@ -34,10 +34,22 @@ function cadIcon(type: string) {
   return L.divIcon({
     className: 'cad-marker',
     html: sirenHtml(color),
-    iconSize: [30, 30],
-    iconAnchor: [15, 22],
-    popupAnchor: [0, -18],
+    iconSize: [34, 34],
+    iconAnchor: [17, 26],
+    popupAnchor: [0, -20],
   });
+}
+
+function isValidCoord(lat: number, lon: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180 &&
+    !(lat === 0 && lon === 0)
+  );
 }
 
 interface MarkerProps {
@@ -50,30 +62,38 @@ function CadMarkerItem({ incident: inc, focusId, source }: MarkerProps) {
   const markerRef = useRef<L.Marker | null>(null);
 
   useEffect(() => {
-    if (focusId === inc.id) {
+    if (focusId !== inc.id) return;
+    const open = () => {
       const marker = markerRef.current;
-      if (marker) {
-        marker.openPopup();
-      }
-    }
+      if (marker) marker.openPopup();
+    };
+    open();
+    const t = window.setTimeout(open, 0);
+    const t2 = window.setTimeout(open, 350);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(t2);
+    };
   }, [focusId, inc.id]);
 
   return (
     <Marker
-      ref={markerRef}
+      ref={(r) => {
+        markerRef.current = r;
+      }}
       position={[inc.lat, inc.lon]}
       icon={cadIcon(inc.type)}
       opacity={focusId && focusId !== inc.id ? 0.55 : 1}
-      zIndexOffset={focusId === inc.id ? 800 : 400}
+      zIndexOffset={focusId === inc.id ? 1200 : 900}
       eventHandlers={{
         add: (e) => {
           if (focusId === inc.id) {
-            e.target.openPopup();
+            window.setTimeout(() => e.target.openPopup(), 0);
           }
         },
       }}
     >
-      <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+      <Tooltip direction="top" offset={[0, -12]} opacity={0.95}>
         <span className="cad-tip">{inc.type}</span>
       </Tooltip>
       <Popup>
@@ -122,9 +142,10 @@ interface Props {
 }
 
 export function CadMarkers({ incidents, focusId, source }: Props) {
+  const valid = incidents.filter((inc) => isValidCoord(inc.lat, inc.lon));
   return (
     <>
-      {incidents.map((inc) => (
+      {valid.map((inc) => (
         <CadMarkerItem
           key={inc.id}
           incident={inc}
