@@ -105,12 +105,12 @@ export default function App() {
             <h1>STAND BY FOR GRID LOCK</h1>
             <p>
               Enter a US ZIP code or street address to open the local intel board — live ADS-B
-              aircraft, CHP public incident pins (CA), weather radar, and OpenMHz call audio plus
-              external scanner catalogs.
+              aircraft, public CAD pins (CA CHP + FL FL511), weather radar, and OpenMHz call audio
+              plus external scanner catalogs.
             </p>
             <ul>
               <li>ADS-B via adsb.lol / adsb.fi (civilian) — not military radar</li>
-              <li>CHP public incidents (sa.xml) — CA traffic/highway/public safety, not city 911 CAD</li>
+              <li>CAD: CA CHP (sa.xml) + FL FL511/FDOT traffic incidents — not city 911 CAD</li>
               <li>Weather radar tiles via RainViewer</li>
               <li>OpenMHz in-app call bursts + external Broadcastify / RadioReference links</li>
             </ul>
@@ -238,7 +238,7 @@ export default function App() {
 
       <footer className="status-bar">
         <span>NOIA OPS</span>
-        <span>CHP CAD ≠ CITY 911</span>
+        <span>CAD = CA CHP + FL FL511 ≠ CITY 911</span>
         <span>ADS-B ≠ MIL RADAR</span>
         <span>POLL ~10s / CAD ~50s</span>
       </footer>

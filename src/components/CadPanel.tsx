@@ -43,7 +43,7 @@ export function CadPanel({
       </header>
       <p className="panel-notice">
         {notice ||
-          'CHP statewide public incidents (CA) — mostly traffic/highway/public safety. Not full city 911 CAD.'}
+          'CAD: CA (CHP) + FL (FL511/FDOT) public traffic incidents — not city 911 CAD.'}
       </p>
       {error && <p className="panel-error">{error}</p>}
       <ul className="cad-list">
@@ -71,8 +71,8 @@ export function CadPanel({
         })}
         {!sorted.length && !loading && (
           <li className="empty cad-empty">
-            No CHP public incidents in range. Coverage is California Highway Patrol statewide
-            (traffic / highway / public safety) — city PD domestic CAD is not in this feed.
+            No public CAD incidents in range. Coverage is California (CHP sa.xml) and Florida
+            (FL511 / FDOT traffic incidents) — city PD domestic 911 CAD is not in these feeds.
           </li>
         )}
       </ul>

@@ -140,15 +140,66 @@ async function nominatimReverse(lat, lon) {
 }
 
 
-// --- CHP CAD (sa.xml) ---
+// --- CAD: CHP (CA) + FL511 (FL) ---
 const CHP_URL = 'https://media.chp.ca.gov/sa_xml/sa.xml';
+const FL511_MAP_BASE = 'https://fl511.com/map/mapIcons';
+const FL511_LIST_BASE = 'https://fl511.com/List/GetData';
 const CAD_CACHE_TTL_MS = 75_000;
-let cadCache = null;
+const CAD_MAX_RADIUS_KM = 200;
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CA_BBOX = { latMin: 32, latMax: 42.5, lonMin: -124.5, lonMax: -114 };
+const FL_BBOX = { latMin: 24.4, latMax: 31.1, lonMin: -87.7, lonMax: -79.9 };
+const FL511_LAYERS = [
+  { mapPath: 'Incidents', listPath: 'incidents', label: 'Incident' },
+  { mapPath: 'Construction', listPath: 'construction', label: 'Construction' },
+  { mapPath: 'Closures', listPath: 'closures', label: 'Closure' },
+  { mapPath: 'DisabledVehicles', listPath: 'disabledvehicles', label: 'Disabled Vehicle' },
+];
+
+let chpCache = null;
+let fl511Cache = null;
+
+function regionFor(lat, lon) {
+  if (
+    lat >= CA_BBOX.latMin &&
+    lat <= CA_BBOX.latMax &&
+    lon >= CA_BBOX.lonMin &&
+    lon <= CA_BBOX.lonMax
+  ) {
+    return 'ca';
+  }
+  if (
+    lat >= FL_BBOX.latMin &&
+    lat <= FL_BBOX.latMax &&
+    lon >= FL_BBOX.lonMin &&
+    lon <= FL_BBOX.lonMax
+  ) {
+    return 'fl';
+  }
+  return 'other';
+}
 
 function stripQuotes(s) {
   const t = String(s ?? '').trim();
   if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
   return t;
+}
+
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(div|span|p|i|b|strong|em|ul|ol|li|a)[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function tagText(block, tag) {
@@ -219,10 +270,10 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-async function getStatewideCad() {
+async function getChpIncidents() {
   const now = Date.now();
-  if (cadCache && now - cadCache.fetchedAt < CAD_CACHE_TTL_MS) {
-    return cadCache.incidents;
+  if (chpCache && now - chpCache.fetchedAt < CAD_CACHE_TTL_MS) {
+    return chpCache.incidents;
   }
   const res = await fetch(CHP_URL, {
     headers: { 'User-Agent': UA, Accept: 'application/xml, text/xml, */*' },
@@ -230,8 +281,151 @@ async function getStatewideCad() {
   if (!res.ok) throw new Error(`CHP sa.xml error (${res.status})`);
   const xml = await res.text();
   const incidents = parseChpXml(xml);
-  cadCache = { fetchedAt: now, incidents };
+  chpCache = { fetchedAt: now, incidents };
   return incidents;
+}
+
+function flIncidentType(row, layerLabel) {
+  const severity = String(row.severity || '').trim();
+  const layer = String(row.type || row.layerName || layerLabel || 'Incident').trim();
+  const desc = String(row.description || '').toLowerCase();
+  let kind = layer;
+  if (/incident/i.test(layer) || layerLabel === 'Incident') {
+    if (desc.includes('crash') || desc.includes('collision')) kind = 'Crash';
+    else if (desc.includes('disabled')) kind = 'Disabled Vehicle';
+    else kind = 'Incident';
+  } else if (/construction/i.test(layer)) {
+    kind = 'Construction';
+  } else if (/closure/i.test(layer)) {
+    kind = 'Closure';
+  } else if (/disabled/i.test(layer)) {
+    kind = 'Disabled Vehicle';
+  }
+  if (severity && severity !== 'N/A') return `${severity} ${kind}`;
+  return kind;
+}
+
+function mapFlRow(row, lat, lon, layerLabel) {
+  const id = String(row.id ?? row.DT_RowId ?? `${layerLabel}-${lat},${lon}`);
+  const details = [];
+  if (row.laneDescription) details.push(String(row.laneDescription));
+  if (row.direction) details.push(`Direction: ${row.direction}`);
+  if (row.severity && row.severity !== 'N/A') details.push(`Severity: ${row.severity}`);
+  if (row.isFullClosure) details.push('Full closure');
+  return {
+    id: `fl511-${id}`,
+    type: flIncidentType(row, layerLabel),
+    location: String(row.roadwayName || '').trim() || 'Unknown roadway',
+    locationDesc: stripHtml(row.description || ''),
+    area: String(row.county || '').trim(),
+    lat,
+    lon,
+    logTime: String(row.lastUpdated || row.startDate || '').trim(),
+    details,
+    units: [],
+  };
+}
+
+async function fetchFlMapIcons(mapPath) {
+  const res = await fetch(`${FL511_MAP_BASE}/${mapPath}`, {
+    headers: {
+      'User-Agent': BROWSER_UA,
+      Accept: 'application/json, text/javascript, */*',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: 'https://fl511.com/list/events/traffic',
+    },
+  });
+  if (!res.ok) throw new Error(`FL511 mapIcons/${mapPath} error (${res.status})`);
+  const data = await res.json();
+  return Array.isArray(data.item2) ? data.item2 : [];
+}
+
+async function fetchFlList(listPath) {
+  const res = await fetch(`${FL511_LIST_BASE}/${listPath}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: 'https://fl511.com/list/events/traffic',
+      'User-Agent': BROWSER_UA,
+      Accept: 'application/json, text/javascript, */*',
+    },
+    body: 'draw=1&start=0&length=200',
+  });
+  if (!res.ok) throw new Error(`FL511 List/GetData/${listPath} error (${res.status})`);
+  const data = await res.json();
+  return Array.isArray(data.data) ? data.data : [];
+}
+
+async function fetchFlLayer(mapPath, listPath, layerLabel) {
+  const [icons, rows] = await Promise.all([
+    fetchFlMapIcons(mapPath),
+    fetchFlList(listPath),
+  ]);
+  const byId = new Map();
+  for (const row of rows) {
+    const key = String(row.id ?? row.DT_RowId ?? '');
+    if (key) byId.set(key, row);
+  }
+  const out = [];
+  for (const icon of icons) {
+    const itemId = String(icon.itemId ?? '');
+    if (!itemId) continue;
+    const loc = icon.location;
+    if (!Array.isArray(loc) || loc.length < 2) continue;
+    const lat = Number(loc[0]);
+    const lon = Number(loc[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const row = byId.get(itemId);
+    if (row) out.push(mapFlRow(row, lat, lon, layerLabel));
+    else {
+      out.push({
+        id: `fl511-${itemId}`,
+        type: layerLabel,
+        location: 'Unknown roadway',
+        locationDesc: '',
+        area: '',
+        lat,
+        lon,
+        logTime: '',
+        details: [],
+        units: [],
+      });
+    }
+  }
+  return out;
+}
+
+async function getFl511Incidents() {
+  const now = Date.now();
+  if (fl511Cache && now - fl511Cache.fetchedAt < CAD_CACHE_TTL_MS) {
+    return fl511Cache.incidents;
+  }
+  const batches = await Promise.all(
+    FL511_LAYERS.map((layer) =>
+      fetchFlLayer(layer.mapPath, layer.listPath, layer.label).catch((err) => {
+        console.error(`FL511 layer ${layer.mapPath} failed:`, err);
+        return [];
+      }),
+    ),
+  );
+  const seen = new Set();
+  const unique = [];
+  for (const inc of batches.flat()) {
+    if (seen.has(inc.id)) continue;
+    seen.add(inc.id);
+    unique.push(inc);
+  }
+  fl511Cache = { fetchedAt: now, incidents: unique };
+  return unique;
+}
+
+function filterCadByRadius(all, lat, lon, radiusKm) {
+  return all
+    .map((inc) => ({ inc, dist: haversineKm(lat, lon, inc.lat, inc.lon) }))
+    .filter((row) => row.dist <= radiusKm)
+    .sort((a, b) => a.dist - b.dist)
+    .map((row) => row.inc);
 }
 
 function sendJson(res, data, status = 200) {
@@ -407,18 +601,37 @@ export function createDevApiMiddleware() {
         if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
           return sendJson(res, { error: 'radiusKm must be a positive number' }, 400);
         }
-        radiusKm = Math.min(150, radiusKm);
-        const all = await getStatewideCad();
-        const incidents = all
-          .map((inc) => ({ ...inc, _dist: haversineKm(lat, lon, inc.lat, inc.lon) }))
-          .filter((inc) => inc._dist <= radiusKm)
-          .sort((a, b) => a._dist - b._dist)
-          .map(({ _dist, ...inc }) => inc);
+        radiusKm = Math.min(CAD_MAX_RADIUS_KM, radiusKm);
+        const region = regionFor(lat, lon);
+        if (region === 'other') {
+          res.setHeader('Cache-Control', 'public, max-age=45');
+          return sendJson(res, {
+            source: 'none',
+            notice:
+              'CAD currently supports California (CHP public sa.xml) and Florida (FL511 / FDOT traffic incidents). Other states have no feed yet — city 911 CAD is not included.',
+            count: 0,
+            incidents: [],
+          });
+        }
+        if (region === 'ca') {
+          const all = await getChpIncidents();
+          const incidents = filterCadByRadius(all, lat, lon, radiusKm);
+          res.setHeader('Cache-Control', 'public, max-age=45');
+          return sendJson(res, {
+            source: 'California Highway Patrol (public sa.xml)',
+            notice:
+              'CHP statewide incidents — mostly traffic/highway/public safety. City PD domestic CAD is not in this feed.',
+            count: incidents.length,
+            incidents,
+          });
+        }
+        const all = await getFl511Incidents();
+        const incidents = filterCadByRadius(all, lat, lon, radiusKm);
         res.setHeader('Cache-Control', 'public, max-age=45');
         return sendJson(res, {
-          source: 'California Highway Patrol (public sa.xml)',
+          source: 'FL511 / FDOT (public traffic incidents)',
           notice:
-            'CHP statewide incidents — mostly traffic/highway/public safety. City PD domestic CAD is not in this feed.',
+            'FL511 / FDOT public traffic incidents — crashes, closures, construction, disabled vehicles. Not city 911 CAD.',
           count: incidents.length,
           incidents,
         });
