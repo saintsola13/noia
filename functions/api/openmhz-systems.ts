@@ -1,10 +1,6 @@
-import {
-  UA,
-  errorJson,
-  json,
-  mapNominatim,
-  nominatimReverse,
-} from './_shared';
+import { errorJson, json, mapNominatim, nominatimReverse } from './_shared';
+
+const UPSTREAM = 'https://noia-aircraft.netlify.app/api/openmhz-systems';
 
 export const onRequestOptions = async () =>
   new Response(null, {
@@ -15,139 +11,6 @@ export const onRequestOptions = async () =>
       'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
-
-const STATE_NAME_TO_CODE: Record<string, string> = {
-  alabama: 'AL',
-  alaska: 'AK',
-  arizona: 'AZ',
-  arkansas: 'AR',
-  california: 'CA',
-  colorado: 'CO',
-  connecticut: 'CT',
-  delaware: 'DE',
-  'district of columbia': 'DC',
-  florida: 'FL',
-  georgia: 'GA',
-  hawaii: 'HI',
-  idaho: 'ID',
-  illinois: 'IL',
-  indiana: 'IN',
-  iowa: 'IA',
-  kansas: 'KS',
-  kentucky: 'KY',
-  louisiana: 'LA',
-  maine: 'ME',
-  maryland: 'MD',
-  massachusetts: 'MA',
-  michigan: 'MI',
-  minnesota: 'MN',
-  mississippi: 'MS',
-  missouri: 'MO',
-  montana: 'MT',
-  nebraska: 'NE',
-  nevada: 'NV',
-  'new hampshire': 'NH',
-  'new jersey': 'NJ',
-  'new mexico': 'NM',
-  'new york': 'NY',
-  'north carolina': 'NC',
-  'north dakota': 'ND',
-  ohio: 'OH',
-  oklahoma: 'OK',
-  oregon: 'OR',
-  pennsylvania: 'PA',
-  'rhode island': 'RI',
-  'south carolina': 'SC',
-  'south dakota': 'SD',
-  tennessee: 'TN',
-  texas: 'TX',
-  utah: 'UT',
-  vermont: 'VT',
-  virginia: 'VA',
-  washington: 'WA',
-  'west virginia': 'WV',
-  wisconsin: 'WI',
-  wyoming: 'WY',
-};
-
-const CODE_TO_NAME: Record<string, string> = Object.fromEntries(
-  Object.entries(STATE_NAME_TO_CODE).map(([name, code]) => [code, name]),
-);
-
-interface OpenMhzRawSystem {
-  name?: string;
-  shortName?: string;
-  city?: string;
-  county?: string;
-  state?: string;
-  active?: boolean;
-  callAvg?: number;
-  lastActive?: string;
-  description?: string;
-}
-
-interface CachedSystems {
-  fetchedAt: number;
-  systems: OpenMhzRawSystem[];
-}
-
-let systemsCache: CachedSystems | null = null;
-const SYSTEMS_TTL_MS = 60 * 60 * 1000;
-
-function normalizeStateCode(input: string | undefined | null): string | undefined {
-  if (!input) return undefined;
-  const trimmed = input.trim();
-  if (!trimmed) return undefined;
-  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
-  return STATE_NAME_TO_CODE[trimmed.toLowerCase()];
-}
-
-function stateMatches(systemState: string | undefined, targetCode: string): boolean {
-  const code = normalizeStateCode(systemState);
-  if (!code) return false;
-  return code === targetCode;
-}
-
-async function getSystems(): Promise<OpenMhzRawSystem[]> {
-  const now = Date.now();
-  if (systemsCache && now - systemsCache.fetchedAt < SYSTEMS_TTL_MS) {
-    return systemsCache.systems;
-  }
-  const res = await fetch('https://api.openmhz.com/systems', {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`OpenMHz systems error (${res.status})`);
-  const data = (await res.json()) as { systems?: OpenMhzRawSystem[] };
-  const systems = Array.isArray(data.systems) ? data.systems : [];
-  systemsCache = { fetchedAt: now, systems };
-  return systems;
-}
-
-function scoreSystem(
-  sys: OpenMhzRawSystem,
-  opts: { city?: string; county?: string; stateCode: string },
-): number {
-  const city = opts.city?.toLowerCase().trim();
-  const county = opts.county?.replace(/\s+County$/i, '').toLowerCase().trim();
-  const name = (sys.name || '').toLowerCase();
-  const desc = (sys.description || '').toLowerCase();
-  const sysCity = (sys.city || '').toLowerCase();
-  const sysCounty = (sys.county || '').toLowerCase();
-  const hay = `${name} ${desc} ${sysCity} ${sysCounty}`;
-
-  let score = 0;
-  if (city) {
-    if (sysCity && (sysCity.includes(city) || city.includes(sysCity))) score += 1000;
-    else if (hay.includes(city)) score += 800;
-  }
-  if (county) {
-    if (sysCounty.includes(county) || hay.includes(county)) score += 400;
-    if (hay.includes(`${county} county`)) score += 100;
-  }
-  if (sys.active) score += 50;
-  score += Math.min(40, Number(sys.callAvg) || 0);
-  return score;
-}
 
 export const onRequestGet = async (context: { request: Request }) => {
   try {
@@ -180,57 +43,31 @@ export const onRequestGet = async (context: { request: Request }) => {
       return errorJson('Provide lat & lon, or state (& optional city)');
     }
 
-    const stateCode = normalizeStateCode(stateParam);
-    if (!stateCode) {
+    if (!stateParam) {
       return errorJson('Could not resolve a US state for this location', 404);
     }
 
-    const all = await getSystems();
-    const inState = all.filter(
-      (s) => s.shortName && stateMatches(s.state, stateCode),
-    );
+    const upstream = new URL(UPSTREAM);
+    upstream.searchParams.set('state', stateParam);
+    if (cityParam) upstream.searchParams.set('city', cityParam);
+    if (county) upstream.searchParams.set('county', county);
+    if (locationLabel) upstream.searchParams.set('locationLabel', locationLabel);
 
-    const scored = inState
-      .map((s) => ({
-        sys: s,
-        score: scoreSystem(s, { city: cityParam, county, stateCode }),
-      }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        const aActive = a.sys.active ? 1 : 0;
-        const bActive = b.sys.active ? 1 : 0;
-        if (bActive !== aActive) return bActive - aActive;
-        return (Number(b.sys.callAvg) || 0) - (Number(a.sys.callAvg) || 0);
-      });
-
-    const top = scored.slice(0, 8).map(({ sys }) => ({
-      shortName: String(sys.shortName),
-      name: sys.name || String(sys.shortName),
-      city: sys.city || sys.county || undefined,
-      state: normalizeStateCode(sys.state) || sys.state || stateCode,
-      active: Boolean(sys.active),
-      callAvg: Number(sys.callAvg) || 0,
-      lastActive: sys.lastActive || undefined,
-    }));
-
-    if (!locationLabel) {
-      const stateName = CODE_TO_NAME[stateCode];
-      locationLabel = cityParam
-        ? `${cityParam}, ${stateCode}`
-        : stateName
-          ? `${stateName} (${stateCode})`
-          : stateCode;
+    const res = await fetch(upstream.toString(), {
+      headers: { Accept: 'application/json', 'User-Agent': 'NoiaOps/1.0 (Cloudflare Pages)' },
+    });
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return errorJson('Upstream returned non-JSON', 502);
     }
-
-    return json(
-      {
-        systems: top,
-        locationLabel,
-        attribution: 'Audio via OpenMHz',
-      },
-      200,
-      300,
-    );
+    if (!res.ok) {
+      const err = (data as { error?: string })?.error || `Upstream error (${res.status})`;
+      return errorJson(err, 502);
+    }
+    return json(data, 200, 300);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'OpenMHz systems lookup failed';
     return errorJson(message, 502);
