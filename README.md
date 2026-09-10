@@ -70,5 +70,5 @@ Private MVP — all rights reserved unless otherwise noted.
 
 - **RainViewer** `weather-maps.json` v2 uses `radar.past` / `radar.nowcast` (not a flat `radar[]`). Tile URL pattern: `{host}{path}/256/{z}/{x}/{y}/2/1_1.png`.
 - **Nominatim** for some US ZIPs returns county under `city_district` (e.g. NYC). The proxy maps `county || city_district`. Respect rate limits; User-Agent is required.
-- **ADS-B:** OpenSky often blocks Cloudflare egress (HTTP 522). MVP uses **adsb.lol** with **adsb.fi** failover. Distances are nautical miles upstream; we convert from km.
+- **ADS-B:** OpenSky and adsb.* block Cloudflare egress. `/api/aircraft` on Pages relays to a Netlify function (`noia-aircraft.netlify.app`) which talks to adsb.lol / adsb.fi.
 - Scanners never embed audio — only deep-links + disclaimer.
