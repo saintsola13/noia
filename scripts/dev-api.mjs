@@ -106,50 +106,55 @@ export function createDevApiMiddleware() {
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
           return sendJson(res, { error: 'lat and lon are required numbers' }, 400);
         }
-        const bbox = radiusToBbox(lat, lon, radiusKm);
-        const params = new URLSearchParams({
-          lamin: String(bbox.lamin),
-          lomin: String(bbox.lomin),
-          lamax: String(bbox.lamax),
-          lomax: String(bbox.lomax),
-        });
-        const osRes = await fetch(`https://opensky-network.org/api/states/all?${params}`, {
-          headers: { Accept: 'application/json' },
-        });
-        if (osRes.status === 429) {
-          return sendJson(res, { error: 'OpenSky rate limited — retry shortly' }, 429);
+        if (!Number.isFinite(radiusKm) || radiusKm <= 0 || radiusKm > 250) {
+          return sendJson(res, { error: 'radiusKm must be between 0 and 250' }, 400);
         }
-        if (!osRes.ok) {
-          return sendJson(res, { error: `OpenSky error (${osRes.status})` }, 502);
+        const distNm = Math.max(1, Math.min(250, radiusKm / 1.852)).toFixed(1);
+        const urls = [
+          `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/${distNm}`,
+          `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${distNm}`,
+        ];
+        let data = null;
+        let source = 'adsb.lol';
+        let lastErr = 'ADS-B upstream unavailable';
+        for (const u of urls) {
+          try {
+            const r = await fetch(u, { headers: { Accept: 'application/json', 'User-Agent': UA } });
+            if (!r.ok) { lastErr = `ADS-B error (${r.status})`; continue; }
+            data = await r.json();
+            source = u.includes('adsb.lol') ? 'adsb.lol' : 'adsb.fi';
+            break;
+          } catch (e) {
+            lastErr = e instanceof Error ? e.message : 'ADS-B fetch failed';
+          }
         }
-        const data = await osRes.json();
-        const states = data.states ?? [];
-        const aircraft = states
-          .map((s) => {
-            const lonV = s[5];
-            const latV = s[6];
-            if (lonV == null || latV == null) return null;
+        if (!data) return sendJson(res, { error: lastErr }, 502);
+        const list = data.ac ?? data.aircraft ?? [];
+        const aircraft = list
+          .map((a) => {
+            if (a.lat == null || a.lon == null) return null;
+            const baro = typeof a.alt_baro === 'number' ? a.alt_baro : null;
             return {
-              icao24: String(s[0] ?? ''),
-              callsign: String(s[1] ?? '').trim() || 'N/A',
-              originCountry: String(s[2] ?? ''),
-              lon: lonV,
-              lat: latV,
-              baroAltitude: s[7] ?? null,
-              geoAltitude: s[13] ?? null,
-              velocity: s[9] ?? null,
-              heading: s[10] ?? null,
-              verticalRate: s[11] ?? null,
-              onGround: Boolean(s[8]),
-              squawk: s[14] != null ? String(s[14]) : null,
+              icao24: String(a.hex ?? '').toLowerCase(),
+              callsign: String(a.flight ?? a.r ?? '').trim() || 'N/A',
+              originCountry: a.desc || a.t || a.category || '',
+              lon: a.lon,
+              lat: a.lat,
+              baroAltitude: baro != null ? baro * 0.3048 : null,
+              geoAltitude: a.alt_geom != null ? a.alt_geom * 0.3048 : null,
+              velocity: a.gs != null ? a.gs * 0.514444 : null,
+              heading: a.track ?? null,
+              verticalRate: a.baro_rate != null ? a.baro_rate * 0.00508 : null,
+              onGround: typeof a.alt_baro === 'string' && String(a.alt_baro).toLowerCase() === 'ground',
+              squawk: a.squawk != null ? String(a.squawk) : null,
             };
           })
           .filter(Boolean);
         return sendJson(res, {
-          time: data.time ?? null,
+          time: data.now ?? Math.floor(Date.now() / 1000),
           count: aircraft.length,
-          bbox,
-          source: 'OpenSky Network ADS-B (civilian)',
+          radiusKm,
+          source: `${source} ADS-B (civilian)`,
           notice: 'ADS-B only — not military radar',
           aircraft,
         });

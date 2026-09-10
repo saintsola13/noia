@@ -1,6 +1,6 @@
 # NOIA // LOCAL INTEL
 
-Tactical ops board MVP: US ZIP/address → dark HUD with live ADS-B aircraft (OpenSky), RainViewer weather radar, and police-scanner deep-links (no audio embed).
+Tactical ops board MVP: US ZIP/address → dark HUD with live ADS-B aircraft (adsb.lol / adsb.fi), RainViewer weather radar, and police-scanner deep-links (no audio embed).
 
 ## Stack
 
@@ -35,7 +35,7 @@ npm run preview  # preview dist/ with the same local /api middleware
 4. Pages automatically serves `functions/` as Pages Functions (`/api/geocode`, `/api/aircraft`, `/api/radar`, `/api/scanners`).
 5. SPA fallback is provided by `public/_redirects` (`/* → /index.html` 200).
 
-No secrets required for the MVP (anonymous OpenSky, public RainViewer, Nominatim with identified User-Agent).
+No secrets required for the MVP (public ADS-B (adsb.lol), RainViewer, Nominatim with identified User-Agent).
 
 ### Optional Wrangler local Pages
 
@@ -50,7 +50,7 @@ npx wrangler pages dev dist --compatibility-date=2024-09-01
 | Route | Purpose |
 |-------|---------|
 | `GET /api/geocode?q=` | Nominatim proxy (ZIP → `postalcode` + `countrycodes=us`) |
-| `GET /api/aircraft?lat=&lon=&radiusKm=` | OpenSky `states/all` bbox |
+| `GET /api/aircraft?lat=&lon=&radiusKm=` | adsb.lol / adsb.fi circle query |
 | `GET /api/radar` | RainViewer `weather-maps.json` proxy |
 | `GET /api/scanners?lat=&lon=` | Reverse geocode → Broadcastify / RadioReference links |
 
@@ -58,7 +58,7 @@ Nominatim User-Agent: `NoiaOps/1.0 (contact: saintsola13)`.
 
 ## Product notes
 
-- Aircraft markers/labels: **ADS-B (OpenSky) — not military radar**
+- Aircraft markers/labels: **ADS-B (adsb.lol) — not military radar**
 - Scanners: deep-links only; short legal/terms disclaimer in UI
 - Aesthetic: black / olive / amber HUD, scanlines, monospace
 
@@ -70,5 +70,5 @@ Private MVP — all rights reserved unless otherwise noted.
 
 - **RainViewer** `weather-maps.json` v2 uses `radar.past` / `radar.nowcast` (not a flat `radar[]`). Tile URL pattern: `{host}{path}/256/{z}/{x}/{y}/2/1_1.png`.
 - **Nominatim** for some US ZIPs returns county under `city_district` (e.g. NYC). The proxy maps `county || city_district`. Respect rate limits; User-Agent is required.
-- **OpenSky** anonymous `states/all` can rate-limit (HTTP 429) and may be unreachable from some egress/TLS environments. UI surfaces errors and keeps polling ~10s. Prefer CF Pages edge egress in production.
+- **ADS-B:** OpenSky often blocks Cloudflare egress (HTTP 522). MVP uses **adsb.lol** with **adsb.fi** failover. Distances are nautical miles upstream; we convert from km.
 - Scanners never embed audio — only deep-links + disclaimer.

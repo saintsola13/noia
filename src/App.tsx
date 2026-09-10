@@ -88,7 +88,7 @@ export default function App() {
               aircraft, weather radar overlay, and scanner deep-links for the area.
             </p>
             <ul>
-              <li>ADS-B via OpenSky Network (civilian) — not military radar</li>
+              <li>ADS-B via adsb.lol / adsb.fi (civilian) — not military radar</li>
               <li>Weather radar tiles via RainViewer</li>
               <li>Scanner links only — no audio embed/proxy</li>
             </ul>
