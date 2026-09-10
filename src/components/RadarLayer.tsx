@@ -7,6 +7,9 @@ interface Props {
   opacity?: number;
 }
 
+/** RainViewer radar raster only exists through zoom 7; z8+ returns "Zoom Level Not Supported". */
+const RADAR_MAX_NATIVE_ZOOM = 7;
+
 export function RadarLayer({ meta, opacity = 0.55 }: Props) {
   const latest = useMemo(() => {
     const past = meta?.radar?.past ?? [];
@@ -26,6 +29,8 @@ export function RadarLayer({ meta, opacity = 0.55 }: Props) {
       url={url}
       opacity={opacity}
       zIndex={350}
+      maxNativeZoom={RADAR_MAX_NATIVE_ZOOM}
+      maxZoom={18}
       attribution='Radar © <a href="https://www.rainviewer.com/">RainViewer</a>'
     />
   );
