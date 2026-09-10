@@ -34,6 +34,7 @@ interface Props {
   aircraft: Aircraft[];
   cadIncidents: CadIncident[];
   showCad: boolean;
+  cadSource?: string | null;
   focusCadId?: string | null;
   focusCad?: { lat: number; lon: number; id: string } | null;
   radarMeta: RadarMeta | null;
@@ -47,6 +48,7 @@ export function MapView({
   aircraft,
   cadIncidents,
   showCad,
+  cadSource,
   focusCadId,
   focusCad,
   radarMeta,
@@ -77,7 +79,9 @@ export function MapView({
         }}
       />
       <AircraftMarkers aircraft={aircraft} />
-      {showCad && <CadMarkers incidents={cadIncidents} focusId={focusCadId} />}
+      {showCad && (
+        <CadMarkers incidents={cadIncidents} focusId={focusCadId} source={cadSource} />
+      )}
       <Recenter lat={lat} lon={lon} />
       <FocusCad focus={focusCad ?? null} />
     </MapContainer>

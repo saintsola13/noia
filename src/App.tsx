@@ -75,7 +75,8 @@ export default function App() {
 
   const onFocusCad = (incident: CadIncident) => {
     setFocusCad({ lat: incident.lat, lon: incident.lon, id: incident.id });
-    setMobileTab('map');
+    setShowCad(true);
+    setMobileTab((tab) => (tab === 'cad' ? 'cad' : 'map'));
   };
 
   return (
@@ -117,8 +118,8 @@ export default function App() {
           </div>
         </main>
       ) : (
-        <main className="ops">
-          <div className={`ops-map-wrap ${mobileTab === 'map' ? 'active' : ''}`}>
+        <main className={`ops ${mobileTab === 'cad' ? 'cad-map-first' : ''}`}>
+          <div className={`ops-map-wrap ${mobileTab === 'map' || mobileTab === 'cad' ? 'active' : ''}`}>
             <MapView
               lat={location.lat}
               lon={location.lon}
@@ -126,6 +127,7 @@ export default function App() {
               aircraft={aircraft}
               cadIncidents={cad.incidents}
               showCad={showCad}
+              cadSource={cad.source}
               focusCadId={focusCad?.id}
               focusCad={focusCad}
               radarMeta={radarMeta}
@@ -185,6 +187,7 @@ export default function App() {
                 originLon={location.lon}
                 onFocus={onFocusCad}
                 focusId={focusCad?.id}
+                onRefresh={cad.refresh}
               />
             </div>
             <div
@@ -222,7 +225,10 @@ export default function App() {
           <button
             type="button"
             className={mobileTab === 'cad' ? 'active' : ''}
-            onClick={() => setMobileTab('cad')}
+            onClick={() => {
+              setMobileTab('cad');
+              setShowCad(true);
+            }}
           >
             CAD
           </button>

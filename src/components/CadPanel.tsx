@@ -12,6 +12,13 @@ interface Props {
   originLon: number;
   onFocus?: (incident: CadIncident) => void;
   focusId?: string | null;
+  onRefresh?: () => void;
+}
+
+function snippet(text: string, max = 72): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
 }
 
 export function CadPanel({
@@ -25,6 +32,7 @@ export function CadPanel({
   originLon,
   onFocus,
   focusId,
+  onRefresh,
 }: Props) {
   const sorted = [...incidents].sort((a, b) => {
     const da = haversineKm(originLat, originLon, a.lat, a.lon);
@@ -36,10 +44,22 @@ export function CadPanel({
     <section className="panel cad-panel">
       <header className="panel-head">
         <h2>CAD // ACTIVE</h2>
-        <span className="panel-meta">
-          {loading ? 'SYNC…' : `${count} incidents`}
-          {updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString()}` : ''}
-        </span>
+        <div className="panel-head-actions">
+          <span className="panel-meta">
+            {loading ? 'SYNC…' : `${count} incidents`}
+            {updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString()}` : ''}
+          </span>
+          {onRefresh ? (
+            <button
+              type="button"
+              className="panel-refresh"
+              onClick={() => onRefresh()}
+              disabled={loading}
+            >
+              {loading ? 'SYNC' : 'REFRESH'}
+            </button>
+          ) : null}
+        </div>
       </header>
       <p className="panel-notice">
         {notice ||
@@ -61,6 +81,9 @@ export function CadPanel({
                   {inc.location || '—'}
                   {inc.area ? ` · ${inc.area}` : ''}
                 </div>
+                {inc.locationDesc ? (
+                  <div className="cad-item-desc">{snippet(inc.locationDesc)}</div>
+                ) : null}
                 <div className="cad-item-meta">
                   <span>{dist < 10 ? dist.toFixed(1) : Math.round(dist)} km</span>
                   <span>{inc.logTime || '—'}</span>

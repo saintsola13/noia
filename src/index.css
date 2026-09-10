@@ -305,7 +305,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  align-items: baseline;
+  align-items: center;
   margin-bottom: 0.4rem;
 }
 
@@ -320,6 +320,36 @@ body {
   font-size: 0.62rem;
   color: var(--muted);
   text-align: right;
+}
+
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.panel-refresh {
+  background: rgba(8, 12, 8, 0.85);
+  border: 1px solid var(--border);
+  color: var(--amber);
+  font: inherit;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  padding: 0.28rem 0.5rem;
+  cursor: pointer;
+}
+
+.panel-refresh:hover:not(:disabled) {
+  border-color: var(--amber);
+  background: rgba(201, 162, 39, 0.15);
+}
+
+.panel-refresh:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  color: var(--muted);
 }
 
 .panel-notice,
@@ -487,6 +517,10 @@ li.empty {
     grid-template-rows: 1fr;
   }
 
+  .ops.cad-map-first {
+    grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.95fr);
+  }
+
   .ops-map-wrap {
     display: none;
     min-height: 0;
@@ -503,6 +537,15 @@ li.empty {
 
   .ops-side.active {
     display: flex;
+  }
+
+  .ops.cad-map-first .ops-side.active {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .ops.cad-map-first .cad-list {
+    max-height: none;
   }
 
   .hide-mobile {
@@ -759,27 +802,77 @@ li.empty {
 }
 
 
-/* --- CAD / CHP active incidents --- */
+/* --- CAD / CHP + FL511 active incidents --- */
 .cad-marker {
   background: transparent !important;
   border: none !important;
 }
 
-.cad-glyph {
-  width: 18px;
-  height: 18px;
+.cad-siren {
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   filter: drop-shadow(0 0 2px #000);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
-.cad-diamond {
-  width: 10px;
-  height: 10px;
-  background: var(--cad-color, var(--amber));
-  transform: rotate(45deg);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--cad-color, var(--amber)) 70%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+.cad-siren-svg {
+  width: 28px;
+  height: 28px;
+  overflow: visible;
+}
+
+.cad-siren-glow {
+  fill: var(--cad-color, var(--amber));
+  opacity: 0.28;
+  animation: cad-siren-pulse 1.6s ease-in-out infinite;
+}
+
+.cad-siren-dome {
+  fill: color-mix(in srgb, var(--cad-color, var(--amber)) 82%, #fff 18%);
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 0.8;
+}
+
+.cad-siren-base,
+.cad-siren-foot {
+  fill: #1a1f1a;
+  stroke: color-mix(in srgb, var(--cad-color, var(--amber)) 55%, #333);
+  stroke-width: 0.7;
+}
+
+.cad-siren-lens {
+  fill: var(--cad-color, var(--amber));
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 0.6;
+  filter: drop-shadow(0 0 3px var(--cad-color, var(--amber)));
+  animation: cad-siren-lens 1.6s ease-in-out infinite;
+}
+
+@keyframes cad-siren-pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(0.92);
+    transform-origin: 16px 18px;
+  }
+  50% {
+    opacity: 0.42;
+    transform: scale(1.08);
+    transform-origin: 16px 18px;
+  }
+}
+
+@keyframes cad-siren-lens {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .cad-tip {
@@ -790,24 +883,66 @@ li.empty {
 .cad-popup {
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: #111;
+  min-width: 180px;
+  max-width: 280px;
 }
 
-.cad-popup .cad-muted {
-  opacity: 0.75;
+.cad-popup-type {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.cad-popup-row {
+  display: grid;
+  grid-template-columns: 4.2rem 1fr;
+  gap: 0.25rem;
+  margin: 0.12rem 0;
   font-size: 11px;
 }
 
+.cad-popup-label {
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+.cad-popup-desc {
+  margin-top: 0.35rem;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.9;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cad-popup-details {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cad-popup-details li {
+  margin: 0.1rem 0;
+}
+
 .cad-popup .cad-units {
-  margin-top: 0.25rem;
+  margin-top: 0.35rem;
   font-size: 11px;
 }
 
 .cad-source {
-  margin-top: 0.35rem;
+  margin-top: 0.4rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
   font-size: 10px;
   opacity: 0.75;
+  line-height: 1.35;
 }
 
 .cad-list {
@@ -857,6 +992,15 @@ li.empty {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cad-item-desc {
+  font-size: 0.58rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.35;
 }
 
 .cad-item-meta {
