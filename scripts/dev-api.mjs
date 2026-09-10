@@ -139,6 +139,101 @@ async function nominatimReverse(lat, lon) {
   return data;
 }
 
+
+// --- CHP CAD (sa.xml) ---
+const CHP_URL = 'https://media.chp.ca.gov/sa_xml/sa.xml';
+const CAD_CACHE_TTL_MS = 75_000;
+let cadCache = null;
+
+function stripQuotes(s) {
+  const t = String(s ?? '').trim();
+  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
+  return t;
+}
+
+function tagText(block, tag) {
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+  const m = block.match(re);
+  return m ? stripQuotes(m[1]) : '';
+}
+
+function collectTagTexts(block, tag) {
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'gi');
+  const out = [];
+  let m;
+  while ((m = re.exec(block)) !== null) {
+    const v = stripQuotes(m[1]).trim();
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+function parseLatLon(raw) {
+  const cleaned = stripQuotes(raw).trim();
+  if (!cleaned || cleaned === '0:0') return null;
+  const parts = cleaned.split(':');
+  if (parts.length !== 2) return null;
+  const latRaw = Number(parts[0]);
+  const lonRaw = Number(parts[1]);
+  if (!Number.isFinite(latRaw) || !Number.isFinite(lonRaw)) return null;
+  if (latRaw === 0 && lonRaw === 0) return null;
+  const lat = latRaw / 1e6;
+  const lon = -Math.abs(lonRaw / 1e6);
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+
+function parseChpXml(xml) {
+  const incidents = [];
+  const logRe = /<Log\s+ID\s*=\s*"([^"]+)"\s*>([\s\S]*?)<\/Log>/gi;
+  let m;
+  while ((m = logRe.exec(xml)) !== null) {
+    const id = m[1];
+    const body = m[2];
+    const coords = parseLatLon(tagText(body, 'LATLON'));
+    if (!coords) continue;
+    incidents.push({
+      id,
+      type: tagText(body, 'LogType'),
+      location: tagText(body, 'Location'),
+      locationDesc: tagText(body, 'LocationDesc'),
+      area: tagText(body, 'Area'),
+      lat: coords.lat,
+      lon: coords.lon,
+      logTime: tagText(body, 'LogTime'),
+      details: collectTagTexts(body, 'IncidentDetail'),
+      units: [...new Set(collectTagTexts(body, 'UnitDetail'))],
+    });
+  }
+  return incidents;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+async function getStatewideCad() {
+  const now = Date.now();
+  if (cadCache && now - cadCache.fetchedAt < CAD_CACHE_TTL_MS) {
+    return cadCache.incidents;
+  }
+  const res = await fetch(CHP_URL, {
+    headers: { 'User-Agent': UA, Accept: 'application/xml, text/xml, */*' },
+  });
+  if (!res.ok) throw new Error(`CHP sa.xml error (${res.status})`);
+  const xml = await res.text();
+  const incidents = parseChpXml(xml);
+  cadCache = { fetchedAt: now, incidents };
+  return incidents;
+}
+
 function sendJson(res, data, status = 200) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
@@ -300,6 +395,34 @@ export function createDevApiMiddleware() {
         });
       }
 
+
+
+      if (url.pathname === '/api/cad') {
+        const lat = Number(url.searchParams.get('lat'));
+        const lon = Number(url.searchParams.get('lon'));
+        let radiusKm = Number(url.searchParams.get('radiusKm') ?? '40');
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          return sendJson(res, { error: 'lat and lon are required numbers' }, 400);
+        }
+        if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
+          return sendJson(res, { error: 'radiusKm must be a positive number' }, 400);
+        }
+        radiusKm = Math.min(150, radiusKm);
+        const all = await getStatewideCad();
+        const incidents = all
+          .map((inc) => ({ ...inc, _dist: haversineKm(lat, lon, inc.lat, inc.lon) }))
+          .filter((inc) => inc._dist <= radiusKm)
+          .sort((a, b) => a._dist - b._dist)
+          .map(({ _dist, ...inc }) => inc);
+        res.setHeader('Cache-Control', 'public, max-age=45');
+        return sendJson(res, {
+          source: 'California Highway Patrol (public sa.xml)',
+          notice:
+            'CHP statewide incidents — mostly traffic/highway/public safety. City PD domestic CAD is not in this feed.',
+          count: incidents.length,
+          incidents,
+        });
+      }
 
       // --- OpenMHz systems (1h memory cache) ---
       if (url.pathname === '/api/openmhz-systems') {

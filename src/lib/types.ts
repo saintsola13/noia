@@ -98,3 +98,23 @@ export interface OpenMhzCallsResponse {
   attribution: string;
 }
 
+
+export interface CadIncident {
+  id: string;
+  type: string;
+  location: string;
+  locationDesc: string;
+  area: string;
+  lat: number;
+  lon: number;
+  logTime: string;
+  details: string[];
+  units: string[];
+}
+
+export interface CadResponse {
+  source: string;
+  notice: string;
+  count: number;
+  incidents: CadIncident[];
+}

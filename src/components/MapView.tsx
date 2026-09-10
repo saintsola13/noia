@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { Circle, MapContainer, TileLayer, useMap } from 'react-leaflet';
-import type { Aircraft } from '../lib/types';
-import type { RadarMeta } from '../lib/types';
+import type { Aircraft, CadIncident, RadarMeta } from '../lib/types';
 import { AircraftMarkers } from './AircraftMarkers';
+import { CadMarkers } from './CadMarkers';
 import { RadarLayer } from './RadarLayer';
 import 'leaflet/dist/leaflet.css';
 
@@ -14,16 +14,44 @@ function Recenter({ lat, lon }: { lat: number; lon: number }) {
   return null;
 }
 
+function FocusCad({
+  focus,
+}: {
+  focus: { lat: number; lon: number; id: string } | null;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focus) return;
+    map.flyTo([focus.lat, focus.lon], Math.max(map.getZoom(), 12), { animate: true, duration: 0.6 });
+  }, [focus, map]);
+  return null;
+}
+
 interface Props {
   lat: number;
   lon: number;
   radiusKm: number;
   aircraft: Aircraft[];
+  cadIncidents: CadIncident[];
+  showCad: boolean;
+  focusCadId?: string | null;
+  focusCad?: { lat: number; lon: number; id: string } | null;
   radarMeta: RadarMeta | null;
   showRadar: boolean;
 }
 
-export function MapView({ lat, lon, radiusKm, aircraft, radarMeta, showRadar }: Props) {
+export function MapView({
+  lat,
+  lon,
+  radiusKm,
+  aircraft,
+  cadIncidents,
+  showCad,
+  focusCadId,
+  focusCad,
+  radarMeta,
+  showRadar,
+}: Props) {
   return (
     <MapContainer
       center={[lat, lon]}
@@ -49,7 +77,9 @@ export function MapView({ lat, lon, radiusKm, aircraft, radarMeta, showRadar }: 
         }}
       />
       <AircraftMarkers aircraft={aircraft} />
+      {showCad && <CadMarkers incidents={cadIncidents} focusId={focusCadId} />}
       <Recenter lat={lat} lon={lon} />
+      <FocusCad focus={focusCad ?? null} />
     </MapContainer>
   );
 }

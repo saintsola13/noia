@@ -1,14 +1,16 @@
 import { useCallback, useState } from 'react';
 import { geocode } from './api/client';
 import { AircraftPanel } from './components/AircraftPanel';
+import { CadPanel } from './components/CadPanel';
 import { MapView } from './components/MapView';
 import { ScannerPanel } from './components/ScannerPanel';
 import { SearchBar } from './components/SearchBar';
 import { useAircraft } from './hooks/useAircraft';
+import { useCad } from './hooks/useCad';
 import { useRadar } from './hooks/useRadar';
 import { useOpenMhz } from './hooks/useOpenMhz';
 import { useScanners } from './hooks/useScanners';
-import type { AppLocation } from './lib/types';
+import type { AppLocation, CadIncident } from './lib/types';
 
 const DEFAULT_RADIUS = 40;
 
@@ -18,7 +20,11 @@ export default function App() {
   const [geocoding, setGeocoding] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [showRadar, setShowRadar] = useState(true);
-  const [mobileTab, setMobileTab] = useState<'map' | 'adsb' | 'scan'>('map');
+  const [showCad, setShowCad] = useState(true);
+  const [focusCad, setFocusCad] = useState<{ lat: number; lon: number; id: string } | null>(
+    null,
+  );
+  const [mobileTab, setMobileTab] = useState<'map' | 'adsb' | 'scan' | 'cad'>('map');
 
   const { aircraft, count, loading, error, updatedAt } = useAircraft(
     location?.lat ?? null,
@@ -32,6 +38,12 @@ export default function App() {
     error: scanError,
   } = useScanners(location?.lat ?? null, location?.lon ?? null);
   const openmhz = useOpenMhz(location?.lat ?? null, location?.lon ?? null);
+  const cad = useCad(
+    location?.lat ?? null,
+    location?.lon ?? null,
+    location?.radiusKm ?? radiusKm,
+    showCad,
+  );
 
   const onSearch = useCallback(
     async (q: string) => {
@@ -45,6 +57,7 @@ export default function App() {
           label: result.displayName,
           radiusKm,
         });
+        setFocusCad(null);
         setMobileTab('map');
       } catch (err) {
         setGeoError(err instanceof Error ? err.message : 'Geocode failed');
@@ -60,6 +73,11 @@ export default function App() {
     setLocation((prev) => (prev ? { ...prev, radiusKm: km } : prev));
   };
 
+  const onFocusCad = (incident: CadIncident) => {
+    setFocusCad({ lat: incident.lat, lon: incident.lon, id: incident.id });
+    setMobileTab('map');
+  };
+
   return (
     <div className="app">
       <div className="scanlines" aria-hidden />
@@ -68,7 +86,7 @@ export default function App() {
           <span className="brand-mark">◈</span>
           <div>
             <div className="brand-title">NOIA // LOCAL INTEL</div>
-            <div className="brand-sub">TACTICAL OPS BOARD · ADS-B · WX · COMMS</div>
+            <div className="brand-sub">TACTICAL OPS BOARD · ADS-B · CAD · WX · COMMS</div>
           </div>
         </div>
         <SearchBar
@@ -87,11 +105,12 @@ export default function App() {
             <h1>STAND BY FOR GRID LOCK</h1>
             <p>
               Enter a US ZIP code or street address to open the local intel board — live ADS-B
-              aircraft, weather radar overlay, and OpenMHz in-app call audio plus external
-              scanner catalogs.
+              aircraft, CHP public incident pins (CA), weather radar, and OpenMHz call audio plus
+              external scanner catalogs.
             </p>
             <ul>
               <li>ADS-B via adsb.lol / adsb.fi (civilian) — not military radar</li>
+              <li>CHP public incidents (sa.xml) — CA traffic/highway/public safety, not city 911 CAD</li>
               <li>Weather radar tiles via RainViewer</li>
               <li>OpenMHz in-app call bursts + external Broadcastify / RadioReference links</li>
             </ul>
@@ -105,6 +124,10 @@ export default function App() {
               lon={location.lon}
               radiusKm={location.radiusKm}
               aircraft={aircraft}
+              cadIncidents={cad.incidents}
+              showCad={showCad}
+              focusCadId={focusCad?.id}
+              focusCad={focusCad}
               radarMeta={radarMeta}
               showRadar={showRadar}
             />
@@ -121,11 +144,23 @@ export default function App() {
                 />
                 WX RADAR
               </label>
+              <label className="hud-toggle">
+                <input
+                  type="checkbox"
+                  checked={showCad}
+                  onChange={(e) => setShowCad(e.target.checked)}
+                />
+                CAD
+              </label>
             </div>
           </div>
 
           <aside className={`ops-side ${mobileTab !== 'map' ? 'active' : ''}`}>
-            <div className={mobileTab === 'adsb' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'}>
+            <div
+              className={
+                mobileTab === 'adsb' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'
+              }
+            >
               <AircraftPanel
                 aircraft={aircraft}
                 count={count}
@@ -134,7 +169,29 @@ export default function App() {
                 updatedAt={updatedAt}
               />
             </div>
-            <div className={mobileTab === 'scan' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'}>
+            <div
+              className={
+                mobileTab === 'cad' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'
+              }
+            >
+              <CadPanel
+                incidents={cad.incidents}
+                count={cad.count}
+                loading={cad.loading}
+                error={cad.error}
+                updatedAt={cad.updatedAt}
+                notice={cad.notice}
+                originLat={location.lat}
+                originLon={location.lon}
+                onFocus={onFocusCad}
+                focusId={focusCad?.id}
+              />
+            </div>
+            <div
+              className={
+                mobileTab === 'scan' || mobileTab === 'map' ? 'side-block' : 'side-block hide-mobile'
+              }
+            >
               <ScannerPanel
                 scanners={scanners}
                 scanLoading={scanLoading}
@@ -164,6 +221,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={mobileTab === 'cad' ? 'active' : ''}
+            onClick={() => setMobileTab('cad')}
+          >
+            CAD
+          </button>
+          <button
+            type="button"
             className={mobileTab === 'scan' ? 'active' : ''}
             onClick={() => setMobileTab('scan')}
           >
@@ -174,8 +238,9 @@ export default function App() {
 
       <footer className="status-bar">
         <span>NOIA OPS</span>
+        <span>CHP CAD ≠ CITY 911</span>
         <span>ADS-B ≠ MIL RADAR</span>
-        <span>POLL ~10s</span>
+        <span>POLL ~10s / CAD ~50s</span>
       </footer>
     </div>
   );

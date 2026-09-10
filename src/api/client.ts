@@ -1,5 +1,6 @@
 import type {
   Aircraft,
+  CadResponse,
   GeoResult,
   OpenMhzCallsResponse,
   OpenMhzSystemsResponse,
@@ -107,3 +108,16 @@ export async function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCalls
   return { shortName, calls, attribution: 'Audio via OpenMHz' };
 }
 
+
+export function fetchCad(
+  lat: number,
+  lon: number,
+  radiusKm: number,
+): Promise<CadResponse> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    radiusKm: String(radiusKm),
+  });
+  return getJson(`/api/cad?${params}`);
+}

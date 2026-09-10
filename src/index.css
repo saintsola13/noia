@@ -520,7 +520,7 @@ li.empty {
 
   .mobile-tabs {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 0;
     border-top: 1px solid var(--border);
     background: #070b07;
@@ -756,4 +756,122 @@ li.empty {
 
 .external-catalogs[open] summary::before {
   content: '▾ ';
+}
+
+
+/* --- CAD / CHP active incidents --- */
+.cad-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.cad-glyph {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 2px #000);
+}
+
+.cad-diamond {
+  width: 10px;
+  height: 10px;
+  background: var(--cad-color, var(--amber));
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--cad-color, var(--amber)) 70%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.cad-tip {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.cad-popup {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #111;
+}
+
+.cad-popup .cad-muted {
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+.cad-popup .cad-units {
+  margin-top: 0.25rem;
+  font-size: 11px;
+}
+
+.cad-source {
+  margin-top: 0.35rem;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.cad-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 36vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cad-item {
+  width: 100%;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  color: var(--text);
+  font: inherit;
+  padding: 0.35rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.cad-item:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.cad-list li.active .cad-item {
+  border-color: var(--danger);
+  background: rgba(196, 68, 68, 0.12);
+}
+
+.cad-item-type {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--amber);
+}
+
+.cad-item-loc {
+  font-size: 0.62rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cad-item-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.58rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.cad-empty {
+  font-size: 0.62rem;
+  line-height: 1.45;
+  color: var(--muted);
+  padding: 0.65rem 0.35rem;
+  text-align: left;
 }
