@@ -14,6 +14,17 @@ import {
   type RawOpenMhzSystem,
 } from '../lib/openmhzMatch';
 
+function proxyOpenMhzAudioUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    if (!/^media\d*\.openmhz\.com$/i.test(u.hostname)) return rawUrl;
+    if (!u.pathname.startsWith('/media/')) return rawUrl;
+    return `/api/openmhz-audio?u=${encodeURIComponent(u.toString())}`;
+  } catch {
+    return rawUrl;
+  }
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -132,7 +143,7 @@ function mapOpenMhzCalls(
     .map((c) => ({
       id: String(c._id || c.id || `${c.talkgroupNum}-${c.time}`),
       talkgroupNum: Number(c.talkgroupNum) || 0,
-      url: String(c.url),
+      url: proxyOpenMhzAudioUrl(String(c.url)),
       time: c.time || '',
       len: typeof c.len === 'number' ? c.len : 0,
       freq: typeof c.freq === 'number' ? c.freq : undefined,
