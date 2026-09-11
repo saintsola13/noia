@@ -25,6 +25,7 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
   const queueRef = useRef<OpenMhzCall[]>([]);
   const nowPlayingRef = useRef<OpenMhzCall | null>(null);
   const playNextRef = useRef<() => void>(() => {});
+  const systemsLoadGenRef = useRef(0);
 
   useEffect(() => {
     autoPlayRef.current = autoPlay;
@@ -121,8 +122,7 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
     [],
   );
 
-  // Load systems when location locks
-  useEffect(() => {
+  const loadSystems = useCallback(async () => {
     if (lat == null || lon == null) {
       setSystems([]);
       setLocationLabel('');
@@ -139,33 +139,38 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
       return;
     }
 
-    let cancelled = false;
+    const gen = ++systemsLoadGenRef.current;
     setSystemsLoading(true);
     setError(null);
-    void fetchOpenMhzSystems(lat, lon)
-      .then((data) => {
-        if (cancelled) return;
-        setSystems(data.systems);
-        setLocationLabel(data.locationLabel);
-        const firstActive =
-          data.systems.find((s) => s.active) ?? data.systems[0] ?? null;
-        setSelectedShortName(firstActive?.shortName ?? null);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'OpenMHz systems failed');
-          setSystems([]);
-          setSelectedShortName(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSystemsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const data = await fetchOpenMhzSystems(lat, lon);
+      if (gen !== systemsLoadGenRef.current) return;
+      setSystems(data.systems);
+      setLocationLabel(data.locationLabel);
+      const firstActive =
+        data.systems.find((s) => s.active) ?? data.systems[0] ?? null;
+      setSelectedShortName(firstActive?.shortName ?? null);
+    } catch (err) {
+      if (gen !== systemsLoadGenRef.current) return;
+      setError(err instanceof Error ? err.message : 'OpenMHz systems failed');
+      setSystems([]);
+      setSelectedShortName(null);
+    } finally {
+      if (gen === systemsLoadGenRef.current) setSystemsLoading(false);
+    }
   }, [lat, lon]);
+
+  // Load systems when location locks (or reloadSystems bumps deps via loadSystems identity)
+  useEffect(() => {
+    void loadSystems();
+    return () => {
+      systemsLoadGenRef.current += 1;
+    };
+  }, [loadSystems]);
+
+  const reloadSystems = useCallback(() => {
+    void loadSystems();
+  }, [loadSystems]);
 
   // Poll calls for selected system
   useEffect(() => {
@@ -287,6 +292,7 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
     systemsLoading,
     callsLoading,
     error,
+    reloadSystems,
     pause,
     resume,
     skip,

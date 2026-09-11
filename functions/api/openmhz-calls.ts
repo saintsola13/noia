@@ -1,7 +1,4 @@
-import { errorJson, json } from './_shared';
-
-const UPSTREAM = 'https://noia-aircraft.netlify.app/api/openmhz-calls';
-const SHORT_NAME_RE = /^[a-z0-9_-]+$/i;
+import { errorJson, json, UA } from './_shared';
 
 export const onRequestOptions = async () =>
   new Response(null, {
@@ -16,30 +13,61 @@ export const onRequestOptions = async () =>
 export const onRequestGet = async (context: { request: Request }) => {
   try {
     const url = new URL(context.request.url);
-    const shortName = url.searchParams.get('shortName')?.trim() || '';
-    if (!shortName || !SHORT_NAME_RE.test(shortName)) {
-      return errorJson('shortName is required and must match /^[a-z0-9_-]+$/i');
+    const system = (url.searchParams.get('system') || url.searchParams.get('shortName') || '').trim();
+    if (!/^[a-z0-9_-]+$/i.test(system)) {
+      return errorJson('system query param required (e.g. hcsc)');
     }
 
-    const upstream = new URL(UPSTREAM);
-    upstream.searchParams.set('shortName', shortName);
-    const res = await fetch(upstream.toString(), {
-      headers: { Accept: 'application/json', 'User-Agent': 'NoiaOps/1.0 (Cloudflare Pages)' },
-    });
-    const text = await res.text();
-    let data: unknown;
     try {
-      data = JSON.parse(text);
+      const upstream = await fetch(`https://api.openmhz.com/${encodeURIComponent(system)}/calls`, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (compatible; NoiaOps/1.0; +https://github.com/saintsola13/noia)',
+        },
+      });
+      if (upstream.ok) {
+        const data = (await upstream.json()) as { calls?: unknown[] };
+        return json(
+          {
+            shortName: system,
+            calls: data.calls || [],
+            attribution: 'Audio via OpenMHz',
+            source: 'live',
+          },
+          200,
+          15,
+        );
+      }
     } catch {
-      return errorJson('Upstream returned non-JSON', 502);
+      // fall through to static cache
     }
-    if (!res.ok) {
-      const err = (data as { error?: string })?.error || `Upstream error (${res.status})`;
-      return errorJson(err, 502);
+
+    // Same-origin static cache (populated at deploy time)
+    const cacheUrl = new URL(`/openmhz-calls-cache/${encodeURIComponent(system)}.json`, url.origin);
+    const cached = await fetch(cacheUrl.toString(), {
+      headers: { Accept: 'application/json' },
+    });
+    if (cached.ok) {
+      const data = await cached.json();
+      return json(
+        {
+          ...data,
+          shortName: system,
+          attribution: 'Audio via OpenMHz (cached snapshot)',
+          source: 'cache',
+        },
+        200,
+        30,
+      );
     }
-    return json(data, 200, 15);
+
+    return errorJson(
+      'OpenMHz calls unavailable from this host and no cache for that system',
+      502,
+    );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'OpenMHz calls lookup failed';
+    const message = err instanceof Error ? err.message : 'OpenMHz calls failed';
     return errorJson(message, 502);
   }
 };

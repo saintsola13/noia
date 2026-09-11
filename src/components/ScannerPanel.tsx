@@ -15,6 +15,7 @@ interface OpenMhzControls {
   systemsLoading: boolean;
   callsLoading: boolean;
   error: string | null;
+  reloadSystems: () => void;
   pause: () => void;
   resume: () => void;
   skip: () => void;
@@ -59,6 +60,7 @@ export function ScannerPanel({ scanners, scanLoading, scanError, openmhz }: Prop
     systemsLoading,
     callsLoading,
     error,
+    reloadSystems,
     pause,
     resume,
     skip,
@@ -77,7 +79,20 @@ export function ScannerPanel({ scanners, scanLoading, scanError, openmhz }: Prop
       </header>
 
       {(error || scanError) && (
-        <p className="panel-error">{error || scanError}</p>
+        <div className="panel-error-row">
+          <p className="panel-error">{error || scanError}</p>
+          {error && (
+            <button
+              type="button"
+              className="radio-btn"
+              onClick={() => reloadSystems()}
+              disabled={systemsLoading}
+              title="Retry OpenMHz systems load"
+            >
+              RETRY
+            </button>
+          )}
+        </div>
       )}
 
       <div className="radio-system-row">

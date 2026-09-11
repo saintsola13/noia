@@ -8,6 +8,11 @@ import type {
   ScannerLinks,
   AlertsResponse,
 } from '../lib/types';
+import {
+  pickOpenMhzSystems,
+  normalizeStateCode,
+  type RawOpenMhzSystem,
+} from '../lib/openmhzMatch';
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -22,6 +27,18 @@ async function getJson<T>(url: string): Promise<T> {
     throw new Error(text || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+function isNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    err.name === 'TypeError' ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('load failed') ||
+    msg.includes('network request failed')
+  );
 }
 
 export function geocode(q: string): Promise<GeoResult> {
@@ -50,22 +67,38 @@ export function fetchScanners(lat: number, lon: number): Promise<ScannerLinks> {
   return getJson(`/api/scanners?${params}`);
 }
 
-/** OpenMHz allows browser CORS; cloud egress is often 403 — call it client-side. */
+async function loadSystemsCatalog(): Promise<{
+  systems: RawOpenMhzSystem[];
+  fromCache: boolean;
+}> {
+  // OpenMHz API sends illegal CORS (* + credentials), so browsers get Failed to fetch.
+  // Always use our same-origin snapshot first.
+  const cacheRes = await fetch('/openmhz-systems-cache.json', {
+    headers: { Accept: 'application/json' },
+  });
+  if (!cacheRes.ok) {
+    throw new Error(
+      'COMMS load failed — catalog missing. Hard-refresh or retry.',
+    );
+  }
+  const cached = (await cacheRes.json()) as { systems?: RawOpenMhzSystem[] };
+  if (!cached.systems?.length) {
+    throw new Error('COMMS load failed — catalog empty. Retry later.');
+  }
+  return { systems: cached.systems, fromCache: true };
+}
+
+/** Place from /api/scanners; catalog from same-origin OpenMHz snapshot (browser CORS broken). */
 export async function fetchOpenMhzSystems(
   lat: number,
   lon: number,
 ): Promise<OpenMhzSystemsResponse> {
-  const { pickOpenMhzSystems, normalizeStateCode } = await import('../lib/openmhzMatch');
   const place = await fetchScanners(lat, lon);
   const stateCode = normalizeStateCode(place.stateCode || place.state);
   if (!stateCode) throw new Error('Could not resolve US state for OpenMHz');
 
-  const res = await fetch('https://api.openmhz.com/systems', {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`OpenMHz systems error (${res.status})`);
-  const data = (await res.json()) as { systems?: import('../lib/openmhzMatch').RawOpenMhzSystem[] };
-  const systems = pickOpenMhzSystems(data.systems || [], {
+  const { systems: raw, fromCache } = await loadSystemsCatalog();
+  const systems = pickOpenMhzSystems(raw, {
     stateCode,
     city: place.city,
     county: place.county,
@@ -73,19 +106,15 @@ export async function fetchOpenMhzSystems(
   return {
     systems,
     locationLabel: place.locationLabel,
-    attribution: 'Audio via OpenMHz',
+    attribution: fromCache
+      ? 'Audio via OpenMHz (catalog: local cache fallback)'
+      : 'Audio via OpenMHz',
   };
 }
 
-export async function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCallsResponse> {
-  if (!/^[a-z0-9_-]+$/i.test(shortName)) {
-    throw new Error('Invalid OpenMHz system id');
-  }
-  const res = await fetch(`https://api.openmhz.com/${encodeURIComponent(shortName)}/calls`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`OpenMHz calls error (${res.status})`);
-  const data = (await res.json()) as {
+function mapOpenMhzCalls(
+  shortName: string,
+  raw: {
     calls?: {
       _id?: string;
       id?: string;
@@ -95,8 +124,10 @@ export async function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCalls
       len?: number;
       freq?: number;
     }[];
-  };
-  const calls = (data.calls || [])
+    attribution?: string;
+  },
+): OpenMhzCallsResponse {
+  const calls = (raw.calls || [])
     .filter((c) => c && c.url)
     .map((c) => ({
       id: String(c._id || c.id || `${c.talkgroupNum}-${c.time}`),
@@ -106,9 +137,63 @@ export async function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCalls
       len: typeof c.len === 'number' ? c.len : 0,
       freq: typeof c.freq === 'number' ? c.freq : undefined,
     }));
-  return { shortName, calls, attribution: 'Audio via OpenMHz' };
+  return {
+    shortName,
+    calls,
+    attribution: raw.attribution || 'Audio via OpenMHz',
+  };
 }
 
+/** Same-origin only — browser cannot read api.openmhz.com (broken CORS). */
+export async function fetchOpenMhzCalls(shortName: string): Promise<OpenMhzCallsResponse> {
+  if (!/^[a-z0-9_-]+$/i.test(shortName)) {
+    throw new Error('Invalid OpenMHz system id');
+  }
+
+  try {
+    const data = await getJson<{
+      calls?: {
+        _id?: string;
+        id?: string;
+        talkgroupNum?: number;
+        url?: string;
+        time?: string;
+        len?: number;
+        freq?: number;
+      }[];
+      attribution?: string;
+    }>(`/api/openmhz-calls?system=${encodeURIComponent(shortName)}`);
+    return mapOpenMhzCalls(shortName, data);
+  } catch (apiErr) {
+    try {
+      const cached = await getJson<{
+        calls?: {
+          _id?: string;
+          id?: string;
+          talkgroupNum?: number;
+          url?: string;
+          time?: string;
+          len?: number;
+          freq?: number;
+        }[];
+        attribution?: string;
+      }>(`/openmhz-calls-cache/${encodeURIComponent(shortName)}.json`);
+      return mapOpenMhzCalls(shortName, {
+        ...cached,
+        attribution: cached.attribution || 'Audio via OpenMHz (cached snapshot)',
+      });
+    } catch {
+      if (isNetworkFailure(apiErr)) {
+        throw new Error(
+          'COMMS calls failed — OpenMHz unreachable. Retry or check network.',
+        );
+      }
+      throw apiErr instanceof Error
+        ? apiErr
+        : new Error('COMMS calls failed — OpenMHz unreachable. Retry or check network.');
+    }
+  }
+}
 
 export function fetchCad(
   lat: number,
