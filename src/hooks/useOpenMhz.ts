@@ -71,7 +71,9 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
       setNowPlaying(call);
       nowPlayingRef.current = call;
       audio.src = call.url;
-      void audio.play().catch(() => {
+      void audio.play().catch((err) => {
+        console.warn('OpenMHz play failed', call.url, err);
+        setError('Audio blocked or failed — tap PLAY again or pick a call in the list');
         setPlaying(false);
         setNowPlaying(null);
         nowPlayingRef.current = null;
@@ -82,7 +84,6 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
   );
 
   const playNext = useCallback(() => {
-    if (!autoPlayRef.current) return;
     if (nowPlayingRef.current) return;
     const next = queueRef.current[0];
     if (!next) return;
@@ -100,22 +101,30 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
 
   const enqueueNew = useCallback(
     (incoming: OpenMhzCall[], { seed }: { seed: boolean }) => {
+      // incoming is newest-first
       const fresh: OpenMhzCall[] = [];
       for (const call of incoming) {
         if (seenIdsRef.current.has(call.id)) continue;
         seenIdsRef.current.add(call.id);
-        if (!seed) fresh.push(call);
+        fresh.push(call);
       }
-      if (seed || fresh.length === 0) return;
-      // OpenMHz returns newest first; play oldest of the new batch first
-      const ordered = [...fresh].reverse();
+
+      let toQueue: OpenMhzCall[] = [];
+      if (seed) {
+        // Prime with a short backlog so PLAY/AUTO have something immediately
+        // (cached snapshots rarely get "new" ids on the next poll).
+        toQueue = [...fresh].slice(0, 8).reverse(); // oldest of the newest 8 first
+      } else if (fresh.length) {
+        toQueue = [...fresh].reverse();
+      }
+      if (!toQueue.length) return;
+
       setQueue((prev) => {
-        const merged = [...prev, ...ordered].slice(-MAX_QUEUE);
+        const merged = [...prev, ...toQueue].slice(-MAX_QUEUE);
         queueRef.current = merged;
         return merged;
       });
       if (autoPlayRef.current && !nowPlayingRef.current) {
-        // Defer to let queue state settle
         queueMicrotask(() => playNextRef.current());
       }
     },
@@ -253,8 +262,18 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
       void audioRef.current.play().catch(() => setPlaying(false));
       return;
     }
+    // If queue is empty (seed skipped / autoplay blocked), bootstrap from buffer
+    if (!queueRef.current.length && calls.length) {
+      const backlog = [...calls].slice(0, 8).reverse();
+      for (const c of backlog) seenIdsRef.current.add(c.id);
+      queueRef.current = backlog;
+      setQueue(backlog);
+    }
+    // Ensure autoplay path can run after a user gesture
+    autoPlayRef.current = true;
+    setAutoPlay(true);
     playNext();
-  }, [playNext]);
+  }, [playNext, calls]);
 
   const skip = useCallback(() => {
     if (audioRef.current) {
