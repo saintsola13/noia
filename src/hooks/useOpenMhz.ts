@@ -43,6 +43,8 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
+      audio.setAttribute('playsinline', 'true');
+      audio.setAttribute('webkit-playsinline', 'true');
       audio.addEventListener('ended', () => {
         setPlaying(false);
         setNowPlaying(null);
@@ -70,15 +72,42 @@ export function useOpenMhz(lat: number | null, lon: number | null) {
       const audio = ensureAudio();
       setNowPlaying(call);
       nowPlayingRef.current = call;
-      audio.src = call.url;
-      void audio.play().catch((err) => {
+
+      const revokeBlob = () => {
+        const prev = audio.dataset.blobUrl;
+        if (prev) {
+          URL.revokeObjectURL(prev);
+          delete audio.dataset.blobUrl;
+        }
+      };
+
+      const fail = (err: unknown) => {
         console.warn('OpenMHz play failed', call.url, err);
         setError('Audio blocked or failed — tap PLAY again or pick a call in the list');
         setPlaying(false);
         setNowPlaying(null);
         nowPlayingRef.current = null;
         playNextRef.current();
-      });
+      };
+
+      // Fetch as blob with an explicit audio MIME — Safari rejects OpenMHz octet-stream
+      void (async () => {
+        try {
+          const res = await fetch(call.url);
+          if (!res.ok) throw new Error(`audio HTTP ${res.status}`);
+          const buf = await res.arrayBuffer();
+          if (!buf.byteLength) throw new Error('empty audio');
+          const lower = call.url.toLowerCase();
+          const mime = lower.includes('.mp3') ? 'audio/mpeg' : 'audio/mp4';
+          revokeBlob();
+          const blobUrl = URL.createObjectURL(new Blob([buf], { type: mime }));
+          audio.dataset.blobUrl = blobUrl;
+          audio.src = blobUrl;
+          await audio.play();
+        } catch (err) {
+          fail(err);
+        }
+      })();
     },
     [ensureAudio],
   );
